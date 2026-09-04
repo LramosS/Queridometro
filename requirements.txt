@@ -1,0 +1,5 @@
+streamlit
+supabase
+Pillow
+streamlit-cropper
+extra-streamlit-components
