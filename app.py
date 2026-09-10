@@ -149,6 +149,7 @@ DEFAULT_SESSION = {
     "current_vote_index": 0,
     "confirm_submission": False,
     "confirm_remove_photo": False,
+    "photo_uploader_version": 0,
 }
 
 for key, value in DEFAULT_SESSION.items():
@@ -398,34 +399,40 @@ def login_user(email):
 
 
 def try_cookie_login():
-    """
-    Recupera o login diretamente dos cookies
-    enviados pelo navegador ao Streamlit.
-
-    Isso é mais confiável no celular do que depender
-    da leitura assíncrona do CookieManager.
-    """
-
     if st.session_state.user_email is not None:
         return
 
+    saved_email = None
+
+    # Primeiro tenta ler pelo contexto nativo
+    # do Streamlit.
     try:
-        saved_email = st.context.cookies.get(
-            REMEMBER_COOKIE
+        saved_email = (
+            st.context.cookies.get(
+                REMEMBER_COOKIE
+            )
         )
     except Exception:
-        saved_email = None
+        pass
+
+    # Fallback para o CookieManager.
+    if not saved_email:
+        try:
+            saved_email = (
+                cookie_manager.get(
+                    cookie=REMEMBER_COOKIE
+                )
+            )
+        except Exception:
+            saved_email = None
 
     if saved_email:
-        login_user(saved_email)
+        login_user(
+            str(saved_email)
+        )
 
 
 def save_login_cookie(email):
-    """
-    Grava o e-mail neste navegador por até 365 dias.
-    Serve apenas para conveniência de login.
-    """
-
     try:
         expiration = (
             datetime.now()
@@ -510,10 +517,26 @@ def save_profile_photo(image):
             )
         )
 
-        public_url = (
+        base_public_url = (
             supabase.storage
             .from_(PHOTO_BUCKET)
             .get_public_url(photo_path)
+        )
+
+        # ------------------------------------------------
+        # CACHE BUSTING
+        # ------------------------------------------------
+        # O arquivo continua sendo avatar.jpg.
+        # A URL recebe uma versão nova para obrigar
+        # navegador/Streamlit a carregar a foto atual.
+        # ------------------------------------------------
+
+        version = now_br().strftime(
+            "%Y%m%d%H%M%S%f"
+        )
+
+        public_url = (
+            f"{base_public_url}?v={version}"
         )
 
         (
@@ -534,6 +557,14 @@ def save_profile_photo(image):
         st.session_state.profile_photo_url = (
             public_url
         )
+
+        st.session_state.confirm_remove_photo = (
+            False
+        )
+
+        # Faz o uploader ganhar uma chave nova.
+        # Assim a foto anterior selecionada some.
+        st.session_state.photo_uploader_version += 1
 
         load_participants.clear()
 
@@ -575,6 +606,12 @@ def remove_profile_photo():
         )
 
         st.session_state.profile_photo_url = None
+
+        st.session_state.confirm_remove_photo = (
+            False
+        )
+
+        st.session_state.photo_uploader_version += 1
 
         load_participants.clear()
 
@@ -882,7 +919,11 @@ def show_home():
                 )
 
                 st.session_state.current_vote_index = 0
-                st.session_state.votes = {}
+
+                # Mantém votos em andamento
+                # somente se já existirem.
+                if not st.session_state.votes:
+                    st.session_state.votes = {}
 
                 st.rerun()
 
@@ -909,7 +950,9 @@ def show_home():
 # ==================================================
 
 def show_emojis():
-    st.title("📖 Emojis")
+    st.title(
+        "📖 Emojis"
+    )
 
     st.write(
         "Consulte aqui o significado "
@@ -980,6 +1023,7 @@ def show_profile():
     )
 
     if st.session_state.profile_photo_url:
+
         col1, col2, col3 = (
             st.columns([1, 1, 1])
         )
@@ -998,6 +1042,16 @@ def show_profile():
 
     st.divider()
 
+    uploader_key = (
+        "edit_photo_"
+        f"{st.session_state.photo_uploader_version}"
+    )
+
+    cropper_key = (
+        "edit_cropper_"
+        f"{st.session_state.photo_uploader_version}"
+    )
+
     uploaded_photo = st.file_uploader(
         "Adicionar ou trocar foto",
         type=[
@@ -1006,10 +1060,11 @@ def show_profile():
             "png",
             "webp",
         ],
-        key="edit_photo",
+        key=uploader_key,
     )
 
     if uploaded_photo is not None:
+
         image = Image.open(
             uploaded_photo
         )
@@ -1028,7 +1083,7 @@ def show_profile():
             realtime_update=True,
             box_color="white",
             aspect_ratio=(1, 1),
-            key="edit_cropper",
+            key=cropper_key,
         )
 
         st.write(
@@ -1047,17 +1102,15 @@ def show_profile():
             if save_profile_photo(
                 cropped_image
             ):
-                st.session_state.confirm_remove_photo = False
-
                 st.success(
-                    "Foto salva."
+                    "Foto atualizada."
                 )
 
                 st.rerun()
 
-    # ----------------------------------------------
+    # ------------------------------------------------
     # REMOVER FOTO COM CONFIRMAÇÃO
-    # ----------------------------------------------
+    # ------------------------------------------------
 
     if st.session_state.profile_photo_url:
 
@@ -1067,7 +1120,10 @@ def show_profile():
                 "Remover foto",
                 use_container_width=True,
             ):
-                st.session_state.confirm_remove_photo = True
+                st.session_state.confirm_remove_photo = (
+                    True
+                )
+
                 st.rerun()
 
         else:
@@ -1082,15 +1138,20 @@ def show_profile():
             )
 
             with col_cancel:
+
                 if st.button(
                     "Cancelar",
                     use_container_width=True,
                     key="cancel_remove_photo",
                 ):
-                    st.session_state.confirm_remove_photo = False
+                    st.session_state.confirm_remove_photo = (
+                        False
+                    )
+
                     st.rerun()
 
             with col_confirm:
+
                 if st.button(
                     "Sim, remover",
                     type="primary",
@@ -1098,7 +1159,11 @@ def show_profile():
                     key="confirm_remove_photo_button",
                 ):
                     if remove_profile_photo():
-                        st.session_state.confirm_remove_photo = False
+
+                        st.session_state.confirm_remove_photo = (
+                            False
+                        )
+
                         st.rerun()
 
     st.divider()
@@ -1121,9 +1186,11 @@ def show_voting():
         use_container_width=True,
     ):
         st.session_state.page = "home"
+
         st.rerun()
 
     if voting_status() != "open":
+
         st.warning(
             "A votação não está disponível "
             "neste horário."
@@ -1132,6 +1199,7 @@ def show_voting():
         return
 
     if has_voted_today():
+
         st.warning(
             "Você já enviou "
             "sua votação de hoje."
@@ -1139,19 +1207,25 @@ def show_voting():
 
         return
 
-    participants = load_participants()
+    participants = (
+        load_participants()
+    )
 
-    voting_list = get_voting_list()
+    voting_list = (
+        get_voting_list()
+    )
 
     total_people = len(
         voting_list
     )
 
     if total_people == 0:
+
         st.info(
             "Não há outros participantes "
             "disponíveis para votação."
         )
+
         return
 
     current_index = (
@@ -1174,7 +1248,9 @@ def show_voting():
         voting_list[current_index]
     )
 
-    target = participants[target_email]
+    target = (
+        participants[target_email]
+    )
 
     target_name = target["name"]
     target_photo = target["photo_url"]
@@ -1195,11 +1271,13 @@ def show_voting():
     )
 
     if target_photo:
+
         col1, col2, col3 = (
             st.columns([1, 1, 1])
         )
 
         with col2:
+
             st.image(
                 target_photo,
                 width=150,
@@ -1226,7 +1304,9 @@ def show_voting():
     ]
 
     for emoji, label, column in first_row:
+
         with column:
+
             if st.button(
                 f"{emoji} {label}",
                 key=(
@@ -1234,6 +1314,7 @@ def show_voting():
                 ),
                 use_container_width=True,
             ):
+
                 st.session_state.votes[
                     target_email
                 ] = emoji
@@ -1251,7 +1332,9 @@ def show_voting():
     ]
 
     for emoji, label, column in second_row:
+
         with column:
+
             if st.button(
                 f"{emoji} {label}",
                 key=(
@@ -1259,6 +1342,7 @@ def show_voting():
                 ),
                 use_container_width=True,
             ):
+
                 st.session_state.votes[
                     target_email
                 ] = emoji
@@ -1270,11 +1354,13 @@ def show_voting():
     )
 
     with col7:
+
         if st.button(
             "😐 Não interage",
             key=f"{target_email}_neutral",
             use_container_width=True,
         ):
+
             st.session_state.votes[
                 target_email
             ] = "😐"
@@ -1282,11 +1368,13 @@ def show_voting():
             st.rerun()
 
     with col8:
+
         if st.button(
             "🦚 Pavão",
             key=f"{target_email}_peacock",
             use_container_width=True,
         ):
+
             st.session_state.votes[
                 target_email
             ] = "🦚"
@@ -1300,6 +1388,7 @@ def show_voting():
     )
 
     if selected_vote:
+
         st.success(
             f"Selecionado: "
             f"{selected_vote} "
@@ -1307,6 +1396,7 @@ def show_voting():
         )
 
     else:
+
         st.warning(
             "Escolha uma opção "
             "para continuar."
@@ -1319,6 +1409,7 @@ def show_voting():
     )
 
     with col_back:
+
         if st.button(
             "← Voltar",
             use_container_width=True,
@@ -1326,16 +1417,20 @@ def show_voting():
                 current_index == 0
             ),
         ):
+
             st.session_state.current_vote_index -= 1
+
             st.rerun()
 
     with col_next:
+
         is_last = (
             current_index
             == total_people - 1
         )
 
         if not is_last:
+
             if st.button(
                 "Próxima →",
                 use_container_width=True,
@@ -1343,10 +1438,13 @@ def show_voting():
                     selected_vote is None
                 ),
             ):
+
                 st.session_state.current_vote_index += 1
+
                 st.rerun()
 
         else:
+
             if st.button(
                 "Revisar votação",
                 use_container_width=True,
@@ -1354,7 +1452,11 @@ def show_voting():
                     selected_vote is None
                 ),
             ):
-                st.session_state.page = "review"
+
+                st.session_state.page = (
+                    "review"
+                )
+
                 st.rerun()
 
     answered = sum(
@@ -1374,6 +1476,7 @@ def show_voting():
 # ==================================================
 
 def show_review():
+
     participants = (
         load_participants()
     )
@@ -1408,6 +1511,7 @@ def show_review():
         voting_list,
         start=1,
     ):
+
         name = (
             participants[email]["name"]
         )
@@ -1423,7 +1527,9 @@ def show_review():
         )
 
         with col_info:
+
             if vote:
+
                 st.markdown(
                     f"""
                     <strong
@@ -1445,17 +1551,20 @@ def show_review():
                 )
 
             else:
+
                 st.write(
                     f"{index}. {name} "
                     f"• Não respondido"
                 )
 
         with col_edit:
+
             if st.button(
                 "Editar",
                 key=f"edit_{email}",
                 use_container_width=True,
             ):
+
                 st.session_state.current_vote_index = (
                     voting_list.index(email)
                 )
@@ -1469,6 +1578,7 @@ def show_review():
         st.divider()
 
     if answered < total_people:
+
         st.warning(
             "Complete todas as respostas "
             "antes de enviar."
@@ -1477,15 +1587,21 @@ def show_review():
         return
 
     if not st.session_state.confirm_submission:
+
         if st.button(
             "Enviar votação",
             type="primary",
             use_container_width=True,
         ):
-            st.session_state.confirm_submission = True
+
+            st.session_state.confirm_submission = (
+                True
+            )
+
             st.rerun()
 
     else:
+
         st.warning(
             "Depois do envio, "
             "as respostas não poderão "
@@ -1497,19 +1613,26 @@ def show_review():
         )
 
         with col_cancel:
+
             if st.button(
                 "Cancelar",
                 use_container_width=True,
             ):
-                st.session_state.confirm_submission = False
+
+                st.session_state.confirm_submission = (
+                    False
+                )
+
                 st.rerun()
 
         with col_confirm:
+
             if st.button(
                 "Confirmar envio",
                 type="primary",
                 use_container_width=True,
             ):
+
                 submit_votes()
 
 
@@ -1518,6 +1641,7 @@ def show_review():
 # ==================================================
 
 def submit_votes():
+
     participants = (
         load_participants()
     )
@@ -1533,6 +1657,7 @@ def submit_votes():
     vote_rows = []
 
     for email in voting_list:
+
         emoji = (
             st.session_state.votes.get(
                 email
@@ -1540,6 +1665,7 @@ def submit_votes():
         )
 
         if emoji is None:
+
             st.error(
                 "Existem respostas pendentes."
             )
@@ -1564,7 +1690,9 @@ def submit_votes():
         )
 
     try:
+
         if vote_rows:
+
             (
                 supabase
                 .table("votes")
@@ -1588,18 +1716,26 @@ def submit_votes():
             .execute()
         )
 
-        st.session_state.confirm_submission = False
-        st.session_state.page = "submitted"
+        st.session_state.confirm_submission = (
+            False
+        )
+
+        st.session_state.page = (
+            "submitted"
+        )
 
         st.rerun()
 
     except Exception as error:
+
         st.error(
             "Não foi possível enviar "
             "a votação."
         )
 
-        st.code(str(error))
+        st.code(
+            str(error)
+        )
 
 
 # ==================================================
@@ -1607,6 +1743,7 @@ def submit_votes():
 # ==================================================
 
 def show_submitted():
+
     st.title(
         "🎭 Queridômetro"
     )
@@ -1629,8 +1766,12 @@ def show_submitted():
         "Voltar ao início",
         use_container_width=True,
     ):
+
         st.session_state.votes = {}
-        st.session_state.page = "home"
+
+        st.session_state.page = (
+            "home"
+        )
 
         st.rerun()
 
@@ -1643,6 +1784,7 @@ def get_results(
     start_date,
     end_date,
 ):
+
     participants = (
         load_participants()
     )
@@ -1667,6 +1809,7 @@ def get_results(
     results = {}
 
     for participant in participants.values():
+
         results[
             participant["id"]
         ] = {
@@ -1683,6 +1826,7 @@ def get_results(
         }
 
     for vote in response.data:
+
         recipient_id = (
             vote["recipient_id"]
         )
@@ -1695,6 +1839,7 @@ def get_results(
             recipient_id in results
             and emoji in COUNTED_EMOJIS
         ):
+
             results[
                 recipient_id
             ]["counts"][emoji] += 1
@@ -1707,12 +1852,15 @@ def show_result_card(
     counts,
     photo_url=None,
 ):
+
     if photo_url:
+
         col1, col2, col3 = (
             st.columns([1, 1, 1])
         )
 
         with col2:
+
             st.image(
                 photo_url,
                 width=110,
@@ -1739,10 +1887,23 @@ def show_result_card(
     emoji_items = ""
 
     for emoji in COUNTED_EMOJIS:
+
         emoji_items += (
-            '<div style="text-align:center;min-width:0;">'
-            f'<div style="font-size:22px;line-height:1.2;">{emoji}</div>'
-            '<div style="font-size:16px;font-weight:700;margin-top:6px;">'
+            '<div style="'
+            'text-align:center;'
+            'min-width:0;'
+            '">'
+            '<div style="'
+            'font-size:22px;'
+            'line-height:1.2;'
+            '">'
+            f'{emoji}'
+            '</div>'
+            '<div style="'
+            'font-size:16px;'
+            'font-weight:700;'
+            'margin-top:6px;'
+            '">'
             f'{counts[emoji]}'
             '</div>'
             '</div>'
@@ -1770,6 +1931,7 @@ def show_result_card(
 
 
 def show_results():
+
     st.title(
         "📊 Resultados"
     )
@@ -1786,6 +1948,7 @@ def show_results():
     if mode == "Hoje":
 
         if voting_status() != "closed":
+
             st.info(
                 "O resultado de hoje "
                 "será liberado depois das 18h."
@@ -1819,11 +1982,14 @@ def show_results():
         )
 
         if voting_status() == "open":
+
             end_date = (
                 today
                 - timedelta(days=1)
             )
+
         else:
+
             end_date = today
 
         st.caption(
@@ -1833,6 +1999,7 @@ def show_results():
         )
 
         if end_date < monday:
+
             st.info(
                 "Ainda não há resultados "
                 "encerrados nesta semana."
@@ -1846,6 +2013,7 @@ def show_results():
         )
 
     for data in results.values():
+
         show_result_card(
             data["name"],
             data["counts"],
@@ -1858,6 +2026,7 @@ def show_results():
 # ==================================================
 
 def show_history():
+
     st.title(
         "🗓️ Histórico"
     )
@@ -1869,6 +2038,7 @@ def show_history():
     weeks = []
 
     for offset in range(8):
+
         reference = (
             today
             - timedelta(
@@ -1918,17 +2088,22 @@ def show_history():
     if monday <= today <= sunday:
 
         if voting_status() == "open":
+
             end_date = (
                 today
                 - timedelta(days=1)
             )
+
         else:
+
             end_date = today
 
     else:
+
         end_date = sunday
 
     if end_date < monday:
+
         st.info(
             "Ainda não há resultados "
             "encerrados nesta semana."
@@ -1942,6 +2117,7 @@ def show_history():
     )
 
     for data in results.values():
+
         show_result_card(
             data["name"],
             data["counts"],
@@ -1950,11 +2126,13 @@ def show_history():
 
 
 # ==================================================
-# MANUTENÇÃO ADMINISTRATIVA
+# MANUTENÇÃO
 # ==================================================
 
 def show_maintenance():
+
     if not is_admin():
+
         st.error(
             "Acesso não autorizado."
         )
@@ -1993,7 +2171,9 @@ def show_maintenance():
             type="primary",
             use_container_width=True,
         ):
+
             if set_maintenance_mode(False):
+
                 st.success(
                     "App reativado."
                 )
@@ -2015,7 +2195,9 @@ def show_maintenance():
             "🔴 Pausar app",
             use_container_width=True,
         ):
+
             if set_maintenance_mode(True):
+
                 st.success(
                     "App pausado."
                 )
@@ -2048,6 +2230,7 @@ def show_maintenance():
     )
 
     try:
+
         participation_today = (
             get_today_participation_count()
         )
@@ -2059,6 +2242,7 @@ def show_maintenance():
         database_ok = True
 
     except Exception:
+
         participation_today = 0
         votes_today = 0
         database_ok = False
@@ -2147,7 +2331,7 @@ if st.session_state.user_email is None:
 
 
 # ==================================================
-# CONTROLE PRINCIPAL DO APP
+# CONTROLE PRINCIPAL
 # ==================================================
 
 if st.session_state.user_email is None:
@@ -2179,6 +2363,7 @@ else:
             st.session_state.page
             not in special_pages
         ):
+
             show_navigation()
 
         if st.session_state.page == "home":
