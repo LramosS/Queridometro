@@ -2574,6 +2574,10 @@ def show_maintenance():
 
     scheduled_datetime = None
 
+    # ==================================================
+    # AGENDAMENTO EM PADRÃO BRASILEIRO
+    # ==================================================
+
     if publication_mode == "Agendar":
 
         col_date, col_time = (
@@ -2582,18 +2586,18 @@ def show_maintenance():
 
         with col_date:
 
-            scheduled_date = st.date_input(
-                "Data",
-                value=(
-                    today_br()
-                    + timedelta(days=1)
-                ),
-                key="announcement_date",
+            default_date = (
+                today_br()
+                + timedelta(days=1)
             )
-            
-            st.caption(
-                f"Data selecionada: "
-                f"{scheduled_date.strftime('%d/%m/%Y')}"
+
+            scheduled_date_text = st.text_input(
+                "Data",
+                value=default_date.strftime(
+                    "%d/%m/%Y"
+                ),
+                placeholder="DD/MM/AAAA",
+                key="announcement_date_text",
             )
 
         with col_time:
@@ -2604,11 +2608,25 @@ def show_maintenance():
                 key="announcement_time",
             )
 
-        scheduled_datetime = datetime.combine(
-            scheduled_date,
-            scheduled_time,
-            tzinfo=TIMEZONE,
-        )
+        try:
+
+            scheduled_date = datetime.strptime(
+                scheduled_date_text,
+                "%d/%m/%Y",
+            ).date()
+
+            scheduled_datetime = datetime.combine(
+                scheduled_date,
+                scheduled_time,
+                tzinfo=TIMEZONE,
+            )
+
+        except ValueError:
+
+            st.warning(
+                "Digite a data no formato "
+                "DD/MM/AAAA."
+            )
 
         st.caption(
             "Horário de Brasília / São Paulo."
@@ -2677,10 +2695,14 @@ def show_maintenance():
 
             elif publication_mode == "Agendar":
 
-                if (
-                    scheduled_datetime
-                    <= now_br()
-                ):
+                if scheduled_datetime is None:
+
+                    st.warning(
+                        "Informe uma data válida "
+                        "no formato DD/MM/AAAA."
+                    )
+
+                elif scheduled_datetime <= now_br():
 
                     st.warning(
                         "Escolha uma data e hora futuras."
@@ -2728,6 +2750,7 @@ def show_maintenance():
         status = announcement.get("status")
 
         if status == "draft":
+
             drafts.append(
                 announcement
             )
@@ -2744,16 +2767,19 @@ def show_maintenance():
                 scheduled_at
                 and scheduled_at <= now_br()
             ):
+
                 published.append(
                     announcement
                 )
 
             else:
+
                 scheduled.append(
                     announcement
                 )
 
         elif status == "published":
+
             published.append(
                 announcement
             )
