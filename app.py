@@ -295,15 +295,19 @@ def set_maintenance_mode(enabled):
 
 
 def show_maintenance_screen():
-    st.title("🎭 Queridômetro")
+    st.title(
+        "🎭 Queridômetro"
+    )
 
     st.warning(
-        "🔧 Estamos fazendo uma atualização rápida."
+        "🔧 Estamos fazendo uma "
+        "atualização rápida."
     )
 
     st.write(
-        "O Queridômetro está temporariamente "
-        "pausado para manutenção."
+        "O Queridômetro está "
+        "temporariamente pausado "
+        "para manutenção."
     )
 
     st.write(
@@ -611,16 +615,17 @@ def remove_profile_photo():
 def show_name(name, tag="h2"):
     safe_name = html.escape(name)
 
+    name_html = (
+        f'<{tag} '
+        'translate="no" '
+        'class="notranslate" '
+        'style="text-align:center;">'
+        f'{safe_name}'
+        f'</{tag}>'
+    )
+
     st.markdown(
-        f"""
-        <{tag}
-            translate="no"
-            class="notranslate"
-            style="text-align:center;"
-        >
-            {safe_name}
-        </{tag}>
-        """,
+        name_html,
         unsafe_allow_html=True,
     )
 
@@ -787,6 +792,7 @@ def show_announcement(
         "Entendi",
         type="primary",
         use_container_width=True,
+        key="announcement_understood",
     ):
         if mark_announcement_as_seen(
             announcement["id"]
@@ -1003,7 +1009,7 @@ def get_today_votes_count():
 
 
 # ==================================================
-# LOGIN
+# TELA DE LOGIN
 # ==================================================
 
 def show_login():
@@ -1142,29 +1148,29 @@ def show_home():
         "🎭 Queridômetro"
     )
 
+    safe_user_name = html.escape(
+        st.session_state.user_name
+    )
+
+    greeting_html = (
+        '<div '
+        'translate="no" '
+        'class="notranslate" '
+        'style="'
+        'padding:14px 16px;'
+        'border-radius:8px;'
+        'background-color:rgba(40,167,69,0.18);'
+        'margin-bottom:16px;'
+        '">'
+        'Olá, '
+        '<strong>'
+        f'{safe_user_name}'
+        '</strong>!'
+        '</div>'
+    )
+
     st.markdown(
-        f"""
-        <div
-            translate="no"
-            class="notranslate"
-            style="
-                padding:14px 16px;
-                border-radius:8px;
-                background-color:
-                    rgba(40,167,69,0.18);
-                margin-bottom:16px;
-            "
-        >
-            Olá,
-            <strong>
-                {
-                    html.escape(
-                        st.session_state.user_name
-                    )
-                }
-            </strong>!
-        </div>
-        """,
+        greeting_html,
         unsafe_allow_html=True,
     )
 
@@ -1315,6 +1321,7 @@ def show_profile():
     )
 
     if st.session_state.profile_photo_url:
+
         col1, col2, col3 = (
             st.columns([1, 1, 1])
         )
@@ -1355,6 +1362,7 @@ def show_profile():
     )
 
     if uploaded_photo is not None:
+
         image = Image.open(
             uploaded_photo
         )
@@ -1406,10 +1414,14 @@ def show_profile():
                 "Remover foto",
                 use_container_width=True,
             ):
-                st.session_state.confirm_remove_photo = True
+                st.session_state.confirm_remove_photo = (
+                    True
+                )
+
                 st.rerun()
 
         else:
+
             st.warning(
                 "⚠️ Tem certeza que deseja "
                 "remover a foto?"
@@ -1420,15 +1432,20 @@ def show_profile():
             )
 
             with col_cancel:
+
                 if st.button(
                     "Cancelar",
                     use_container_width=True,
                     key="cancel_remove_photo",
                 ):
-                    st.session_state.confirm_remove_photo = False
+                    st.session_state.confirm_remove_photo = (
+                        False
+                    )
+
                     st.rerun()
 
             with col_confirm:
+
                 if st.button(
                     "Sim, remover",
                     type="primary",
@@ -1452,20 +1469,28 @@ def show_profile():
 # ==================================================
 
 def show_voting():
+
+    # ------------------------------------------------
+    # VOLTAR PARA A HOME
+    # ------------------------------------------------
+
     if st.button(
         "← Voltar para início",
         use_container_width=True,
+        key="back_to_home_from_voting",
     ):
         st.session_state.page = "home"
-
         st.rerun()
+
+    # ------------------------------------------------
+    # VERIFICAÇÕES
+    # ------------------------------------------------
 
     if voting_status() != "open":
         st.warning(
             "A votação não está disponível "
             "neste horário."
         )
-
         return
 
     if has_voted_today():
@@ -1473,28 +1498,23 @@ def show_voting():
             "Você já enviou "
             "sua votação de hoje."
         )
-
         return
 
-    participants = (
-        load_participants()
-    )
+    participants = load_participants()
+    voting_list = get_voting_list()
 
-    voting_list = (
-        get_voting_list()
-    )
-
-    total_people = len(
-        voting_list
-    )
+    total_people = len(voting_list)
 
     if total_people == 0:
         st.info(
             "Não há outros participantes "
             "disponíveis para votação."
         )
-
         return
+
+    # ------------------------------------------------
+    # PARTICIPANTE ATUAL
+    # ------------------------------------------------
 
     current_index = (
         st.session_state.current_vote_index
@@ -1516,12 +1536,14 @@ def show_voting():
         voting_list[current_index]
     )
 
-    target = (
-        participants[target_email]
-    )
+    target = participants[target_email]
 
     target_name = target["name"]
     target_photo = target["photo_url"]
+
+    # ------------------------------------------------
+    # CABEÇALHO
+    # ------------------------------------------------
 
     st.title(
         "🎭 Queridômetro"
@@ -1538,7 +1560,12 @@ def show_voting():
         / total_people
     )
 
+    # ------------------------------------------------
+    # FOTO
+    # ------------------------------------------------
+
     if target_photo:
+
         col1, col2, col3 = (
             st.columns([1, 1, 1])
         )
@@ -1559,55 +1586,90 @@ def show_voting():
         "com essa pessoa hoje?"
     )
 
+    # ------------------------------------------------
+    # SELEÇÃO DO EMOJI
+    # ------------------------------------------------
+
+    def select_vote(emoji):
+        st.session_state.votes[
+            target_email
+        ] = emoji
+
+        # Escolher o emoji nunca abre
+        # automaticamente a revisão.
+        st.session_state.page = "voting"
+
+        st.session_state.confirm_submission = False
+
+        st.rerun()
+
+    # ------------------------------------------------
+    # PRIMEIRA LINHA
+    # ------------------------------------------------
+
     col1, col2, col3 = (
         st.columns(3)
     )
 
-    first_row = [
-        ("❤️", "Coração", col1),
-        ("🌱", "Planta", col2),
-        ("🔥", "Foguinho", col3),
-    ]
+    with col1:
+        if st.button(
+            "❤️ Coração",
+            key=f"vote_{target_email}_heart",
+            use_container_width=True,
+        ):
+            select_vote("❤️")
 
-    for emoji, label, column in first_row:
-        with column:
-            if st.button(
-                f"{emoji} {label}",
-                key=(
-                    f"{target_email}_{emoji}"
-                ),
-                use_container_width=True,
-            ):
-                st.session_state.votes[
-                    target_email
-                ] = emoji
+    with col2:
+        if st.button(
+            "🌱 Planta",
+            key=f"vote_{target_email}_plant",
+            use_container_width=True,
+        ):
+            select_vote("🌱")
 
-                st.rerun()
+    with col3:
+        if st.button(
+            "🔥 Foguinho",
+            key=f"vote_{target_email}_fire",
+            use_container_width=True,
+        ):
+            select_vote("🔥")
+
+    # ------------------------------------------------
+    # SEGUNDA LINHA
+    # ------------------------------------------------
 
     col4, col5, col6 = (
         st.columns(3)
     )
 
-    second_row = [
-        ("🐍", "Cobrinha", col4),
-        ("🧳", "Mala", col5),
-        ("🤝", "Parceria", col6),
-    ]
+    with col4:
+        if st.button(
+            "🐍 Cobrinha",
+            key=f"vote_{target_email}_snake",
+            use_container_width=True,
+        ):
+            select_vote("🐍")
 
-    for emoji, label, column in second_row:
-        with column:
-            if st.button(
-                f"{emoji} {label}",
-                key=(
-                    f"{target_email}_{emoji}"
-                ),
-                use_container_width=True,
-            ):
-                st.session_state.votes[
-                    target_email
-                ] = emoji
+    with col5:
+        if st.button(
+            "🧳 Mala",
+            key=f"vote_{target_email}_bag",
+            use_container_width=True,
+        ):
+            select_vote("🧳")
 
-                st.rerun()
+    with col6:
+        if st.button(
+            "🤝 Parceria",
+            key=f"vote_{target_email}_partner",
+            use_container_width=True,
+        ):
+            select_vote("🤝")
+
+    # ------------------------------------------------
+    # TERCEIRA LINHA
+    # ------------------------------------------------
 
     col7, col8 = (
         st.columns(2)
@@ -1616,26 +1678,22 @@ def show_voting():
     with col7:
         if st.button(
             "😐 Não interage",
-            key=f"{target_email}_neutral",
+            key=f"vote_{target_email}_neutral",
             use_container_width=True,
         ):
-            st.session_state.votes[
-                target_email
-            ] = "😐"
-
-            st.rerun()
+            select_vote("😐")
 
     with col8:
         if st.button(
             "🦚 Pavão",
-            key=f"{target_email}_peacock",
+            key=f"vote_{target_email}_peacock",
             use_container_width=True,
         ):
-            st.session_state.votes[
-                target_email
-            ] = "🦚"
+            select_vote("🦚")
 
-            st.rerun()
+    # ------------------------------------------------
+    # VOTO SELECIONADO
+    # ------------------------------------------------
 
     selected_vote = (
         st.session_state.votes.get(
@@ -1644,6 +1702,7 @@ def show_voting():
     )
 
     if selected_vote:
+
         st.success(
             f"Selecionado: "
             f"{selected_vote} "
@@ -1651,6 +1710,7 @@ def show_voting():
         )
 
     else:
+
         st.warning(
             "Escolha uma opção "
             "para continuar."
@@ -1658,53 +1718,78 @@ def show_voting():
 
     st.divider()
 
+    # ------------------------------------------------
+    # NAVEGAÇÃO ENTRE PESSOAS
+    # ------------------------------------------------
+
     col_back, col_next = (
         st.columns(2)
     )
 
     with col_back:
+
         if st.button(
             "← Voltar",
             use_container_width=True,
             disabled=(
                 current_index == 0
             ),
+            key=f"previous_person_{current_index}",
         ):
+
             st.session_state.current_vote_index -= 1
+
+            st.session_state.page = "voting"
 
             st.rerun()
 
     with col_next:
+
         is_last = (
             current_index
             == total_people - 1
         )
 
         if not is_last:
+
             if st.button(
                 "Próxima →",
                 use_container_width=True,
                 disabled=(
                     selected_vote is None
                 ),
+                key=f"next_person_{current_index}",
             ):
+
                 st.session_state.current_vote_index += 1
+
+                st.session_state.page = "voting"
 
                 st.rerun()
 
         else:
+
             if st.button(
                 "Revisar votação",
+                type="primary",
                 use_container_width=True,
                 disabled=(
                     selected_vote is None
                 ),
+                key="open_vote_review",
             ):
-                st.session_state.page = (
-                    "review"
-                )
+
+                # SOMENTE este botão
+                # abre a revisão.
+                st.session_state.page = "review"
+
+                st.session_state.confirm_submission = False
 
                 st.rerun()
+
+    # ------------------------------------------------
+    # CONTADOR
+    # ------------------------------------------------
 
     answered = sum(
         1
@@ -1723,23 +1808,21 @@ def show_voting():
 # ==================================================
 
 def show_review():
-    participants = (
-        load_participants()
-    )
 
-    voting_list = (
-        get_voting_list()
-    )
+    participants = load_participants()
+    voting_list = get_voting_list()
 
-    total_people = len(
-        voting_list
-    )
+    total_people = len(voting_list)
 
     answered = sum(
         1
         for email in voting_list
         if email in st.session_state.votes
     )
+
+    # ------------------------------------------------
+    # CABEÇALHO
+    # ------------------------------------------------
 
     st.title(
         "Revisar votação"
@@ -1753,10 +1836,15 @@ def show_review():
 
     st.divider()
 
+    # ------------------------------------------------
+    # LISTA DAS RESPOSTAS
+    # ------------------------------------------------
+
     for index, email in enumerate(
         voting_list,
         start=1,
     ):
+
         name = (
             participants[email]["name"]
         )
@@ -1772,73 +1860,149 @@ def show_review():
         )
 
         with col_info:
+
+            safe_name = html.escape(
+                name
+            )
+
             if vote:
-                st.markdown(
-                    f"""
-                    <strong
-                        translate="no"
-                        class="notranslate"
-                    >
-                        {index}.
-                        {html.escape(name)}
-                    </strong>
-                    <br>
-                    {vote}
-                    {
-                        EMOJI_OPTIONS[
-                            vote
-                        ]["name"]
-                    }
-                    """,
-                    unsafe_allow_html=True,
+
+                vote_name = html.escape(
+                    EMOJI_OPTIONS[vote]["name"]
+                )
+
+                review_html = (
+                    '<div '
+                    'translate="no" '
+                    'class="notranslate" '
+                    'style="'
+                    'font-size:16px;'
+                    'line-height:1.6;'
+                    '">'
+                    '<strong>'
+                    f'{index}. {safe_name}'
+                    '</strong>'
+                    '<br>'
+                    f'{vote} {vote_name}'
+                    '</div>'
                 )
 
             else:
-                st.write(
-                    f"{index}. {name} "
-                    f"• Não respondido"
+
+                review_html = (
+                    '<div '
+                    'translate="no" '
+                    'class="notranslate" '
+                    'style="'
+                    'font-size:16px;'
+                    'line-height:1.6;'
+                    '">'
+                    '<strong>'
+                    f'{index}. {safe_name}'
+                    '</strong>'
+                    '<br>'
+                    'Não respondido'
+                    '</div>'
                 )
 
+            st.markdown(
+                review_html,
+                unsafe_allow_html=True,
+            )
+
+        # ------------------------------------------------
+        # EDITAR RESPOSTA
+        # ------------------------------------------------
+
         with col_edit:
+
             if st.button(
                 "Editar",
                 key=f"edit_{email}",
                 use_container_width=True,
             ):
+
                 st.session_state.current_vote_index = (
-                    voting_list.index(email)
+                    voting_list.index(
+                        email
+                    )
                 )
 
                 st.session_state.page = (
                     "voting"
                 )
 
+                st.session_state.confirm_submission = (
+                    False
+                )
+
                 st.rerun()
 
         st.divider()
 
+    # ------------------------------------------------
+    # PENDÊNCIAS
+    # ------------------------------------------------
+
     if answered < total_people:
+
         st.warning(
             "Complete todas as respostas "
             "antes de enviar."
         )
 
+        if st.button(
+            "Voltar para votação",
+            use_container_width=True,
+        ):
+
+            for email in voting_list:
+
+                if (
+                    email
+                    not in st.session_state.votes
+                ):
+
+                    st.session_state.current_vote_index = (
+                        voting_list.index(
+                            email
+                        )
+                    )
+
+                    break
+
+            st.session_state.page = (
+                "voting"
+            )
+
+            st.rerun()
+
         return
 
+    # ------------------------------------------------
+    # ENVIAR VOTAÇÃO
+    # ------------------------------------------------
+
     if not st.session_state.confirm_submission:
+
         if st.button(
             "Enviar votação",
             type="primary",
             use_container_width=True,
+            key="start_submission",
         ):
-            st.session_state.confirm_submission = True
+
+            st.session_state.confirm_submission = (
+                True
+            )
+
             st.rerun()
 
     else:
+
         st.warning(
-            "Depois do envio, "
-            "as respostas não poderão "
-            "mais ser alteradas."
+            "Depois do envio, as respostas "
+            "não poderão mais ser alteradas."
         )
 
         col_cancel, col_confirm = (
@@ -1846,19 +2010,28 @@ def show_review():
         )
 
         with col_cancel:
+
             if st.button(
                 "Cancelar",
                 use_container_width=True,
+                key="cancel_submission",
             ):
-                st.session_state.confirm_submission = False
+
+                st.session_state.confirm_submission = (
+                    False
+                )
+
                 st.rerun()
 
         with col_confirm:
+
             if st.button(
                 "Confirmar envio",
                 type="primary",
                 use_container_width=True,
+                key="confirm_submission_button",
             ):
+
                 submit_votes()
 
 
@@ -1867,6 +2040,7 @@ def show_review():
 # ==================================================
 
 def submit_votes():
+
     participants = (
         load_participants()
     )
@@ -1882,6 +2056,7 @@ def submit_votes():
     vote_rows = []
 
     for email in voting_list:
+
         emoji = (
             st.session_state.votes.get(
                 email
@@ -1889,6 +2064,7 @@ def submit_votes():
         )
 
         if emoji is None:
+
             st.error(
                 "Existem respostas pendentes."
             )
@@ -1913,7 +2089,9 @@ def submit_votes():
         )
 
     try:
+
         if vote_rows:
+
             (
                 supabase
                 .table("votes")
@@ -1937,18 +2115,26 @@ def submit_votes():
             .execute()
         )
 
-        st.session_state.confirm_submission = False
-        st.session_state.page = "submitted"
+        st.session_state.confirm_submission = (
+            False
+        )
+
+        st.session_state.page = (
+            "submitted"
+        )
 
         st.rerun()
 
     except Exception as error:
+
         st.error(
             "Não foi possível enviar "
             "a votação."
         )
 
-        st.code(str(error))
+        st.code(
+            str(error)
+        )
 
 
 # ==================================================
@@ -1956,6 +2142,7 @@ def submit_votes():
 # ==================================================
 
 def show_submitted():
+
     st.title(
         "🎭 Queridômetro"
     )
@@ -1978,8 +2165,12 @@ def show_submitted():
         "Voltar ao início",
         use_container_width=True,
     ):
+
         st.session_state.votes = {}
-        st.session_state.page = "home"
+
+        st.session_state.page = (
+            "home"
+        )
 
         st.rerun()
 
@@ -1992,6 +2183,7 @@ def get_results(
     start_date,
     end_date,
 ):
+
     participants = (
         load_participants()
     )
@@ -2016,6 +2208,7 @@ def get_results(
     results = {}
 
     for participant in participants.values():
+
         results[
             participant["id"]
         ] = {
@@ -2032,6 +2225,7 @@ def get_results(
         }
 
     for vote in response.data:
+
         recipient_id = (
             vote["recipient_id"]
         )
@@ -2044,6 +2238,7 @@ def get_results(
             recipient_id in results
             and emoji in COUNTED_EMOJIS
         ):
+
             results[
                 recipient_id
             ]["counts"][emoji] += 1
@@ -2056,42 +2251,63 @@ def show_result_card(
     counts,
     photo_url=None,
 ):
+
     if photo_url:
+
         col1, col2, col3 = (
             st.columns([1, 1, 1])
         )
 
         with col2:
+
             st.image(
                 photo_url,
                 width=110,
             )
 
+    safe_name = html.escape(
+        name
+    )
+
+    result_name_html = (
+        '<div '
+        'translate="no" '
+        'class="notranslate" '
+        'style="'
+        'font-size:22px;'
+        'font-weight:700;'
+        'margin-top:18px;'
+        'margin-bottom:14px;'
+        '">'
+        f'{safe_name}'
+        '</div>'
+    )
+
     st.markdown(
-        f"""
-        <div
-            translate="no"
-            class="notranslate"
-            style="
-                font-size:22px;
-                font-weight:700;
-                margin-top:18px;
-                margin-bottom:14px;
-            "
-        >
-            {html.escape(name)}
-        </div>
-        """,
+        result_name_html,
         unsafe_allow_html=True,
     )
 
     emoji_items = ""
 
     for emoji in COUNTED_EMOJIS:
+
         emoji_items += (
-            '<div style="text-align:center;min-width:0;">'
-            f'<div style="font-size:22px;line-height:1.2;">{emoji}</div>'
-            '<div style="font-size:16px;font-weight:700;margin-top:6px;">'
+            '<div style="'
+            'text-align:center;'
+            'min-width:0;'
+            '">'
+            '<div style="'
+            'font-size:22px;'
+            'line-height:1.2;'
+            '">'
+            f'{emoji}'
+            '</div>'
+            '<div style="'
+            'font-size:16px;'
+            'font-weight:700;'
+            'margin-top:6px;'
+            '">'
             f'{counts[emoji]}'
             '</div>'
             '</div>'
@@ -2119,6 +2335,7 @@ def show_result_card(
 
 
 def show_results():
+
     st.title(
         "📊 Resultados"
     )
@@ -2135,6 +2352,7 @@ def show_results():
     if mode == "Hoje":
 
         if voting_status() != "closed":
+
             st.info(
                 "O resultado de hoje "
                 "será liberado depois das 18h."
@@ -2158,6 +2376,7 @@ def show_results():
         )
 
     else:
+
         today = (
             today_br()
         )
@@ -2167,9 +2386,11 @@ def show_results():
         )
 
         if voting_status() == "closed":
+
             end_date = today
 
         else:
+
             end_date = (
                 today
                 - timedelta(days=1)
@@ -2182,6 +2403,7 @@ def show_results():
         )
 
         if end_date < monday:
+
             st.info(
                 "Ainda não há resultados "
                 "encerrados nesta semana."
@@ -2195,6 +2417,7 @@ def show_results():
         )
 
     for data in results.values():
+
         show_result_card(
             data["name"],
             data["counts"],
@@ -2207,6 +2430,7 @@ def show_results():
 # ==================================================
 
 def show_history():
+
     st.title(
         "🗓️ Histórico"
     )
@@ -2218,6 +2442,7 @@ def show_history():
     weeks = []
 
     for offset in range(8):
+
         reference = (
             today
             - timedelta(
@@ -2267,18 +2492,22 @@ def show_history():
     if monday <= today <= sunday:
 
         if voting_status() == "closed":
+
             end_date = today
 
         else:
+
             end_date = (
                 today
                 - timedelta(days=1)
             )
 
     else:
+
         end_date = sunday
 
     if end_date < monday:
+
         st.info(
             "Ainda não há resultados "
             "encerrados nesta semana."
@@ -2292,6 +2521,7 @@ def show_history():
     )
 
     for data in results.values():
+
         show_result_card(
             data["name"],
             data["counts"],
@@ -2304,7 +2534,9 @@ def show_history():
 # ==================================================
 
 def show_maintenance():
+
     if not is_admin():
+
         st.error(
             "Acesso não autorizado."
         )
@@ -2319,6 +2551,10 @@ def show_maintenance():
         "Área técnica do Queridômetro"
     )
 
+    # ==================================================
+    # CONTROLE DO APP
+    # ==================================================
+
     maintenance_active = (
         get_maintenance_mode()
     )
@@ -2328,6 +2564,7 @@ def show_maintenance():
     )
 
     if maintenance_active:
+
         st.error(
             "🔴 App pausado para manutenção"
         )
@@ -2342,7 +2579,9 @@ def show_maintenance():
             type="primary",
             use_container_width=True,
         ):
+
             if set_maintenance_mode(False):
+
                 st.success(
                     "App reativado."
                 )
@@ -2350,6 +2589,7 @@ def show_maintenance():
                 st.rerun()
 
     else:
+
         st.success(
             "🟢 App ativo"
         )
@@ -2363,7 +2603,9 @@ def show_maintenance():
             "🔴 Pausar app",
             use_container_width=True,
         ):
+
             if set_maintenance_mode(True):
+
                 st.success(
                     "App pausado."
                 )
@@ -2395,6 +2637,7 @@ def show_maintenance():
     default_message = ""
 
     if latest_announcement:
+
         default_version = (
             latest_announcement.get(
                 "version"
@@ -2421,6 +2664,7 @@ def show_maintenance():
             "Versão",
             value=default_version,
             placeholder="Ex.: 1.1",
+            key="announcement_version",
         )
     )
 
@@ -2432,6 +2676,7 @@ def show_maintenance():
                 "🎭 O Queridômetro voltou "
                 "com novidades!"
             ),
+            key="announcement_title",
         )
     )
 
@@ -2444,6 +2689,7 @@ def show_maintenance():
                 "Escreva aqui as novidades "
                 "da versão."
             ),
+            key="announcement_message",
         )
     )
 
@@ -2452,10 +2698,13 @@ def show_maintenance():
     )
 
     with col_draft:
+
         if st.button(
             "Salvar rascunho",
             use_container_width=True,
+            key="save_announcement_draft",
         ):
+
             version = (
                 announcement_version.strip()
             )
@@ -2473,17 +2722,20 @@ def show_maintenance():
                 or not title
                 or not message
             ):
+
                 st.warning(
                     "Preencha versão, título "
                     "e mensagem."
                 )
 
             else:
+
                 if save_announcement_draft(
                     version,
                     title,
                     message,
                 ):
+
                     st.success(
                         "Rascunho salvo."
                     )
@@ -2491,11 +2743,14 @@ def show_maintenance():
                     st.rerun()
 
     with col_publish:
+
         if st.button(
             "Publicar mensagem",
             type="primary",
             use_container_width=True,
+            key="publish_announcement",
         ):
+
             version = (
                 announcement_version.strip()
             )
@@ -2513,17 +2768,20 @@ def show_maintenance():
                 or not title
                 or not message
             ):
+
                 st.warning(
                     "Preencha versão, título "
                     "e mensagem."
                 )
 
             else:
+
                 if publish_announcement(
                     version,
                     title,
                     message,
                 ):
+
                     st.success(
                         "Mensagem publicada."
                     )
@@ -2535,6 +2793,7 @@ def show_maintenance():
     )
 
     if latest_announcement:
+
         st.write("")
 
         status = (
@@ -2550,6 +2809,7 @@ def show_maintenance():
         )
 
         if status == "published":
+
             st.success(
                 f"🟢 Versão {version} publicada"
             )
@@ -2572,10 +2832,13 @@ def show_maintenance():
             if st.button(
                 "Desativar mensagem",
                 use_container_width=True,
+                key="deactivate_announcement",
             ):
+
                 if deactivate_announcement(
                     latest_announcement["id"]
                 ):
+
                     st.success(
                         "Mensagem desativada."
                     )
@@ -2583,18 +2846,20 @@ def show_maintenance():
                     st.rerun()
 
         elif status == "draft":
+
             st.info(
                 f"📝 Versão {version} "
                 f"salva como rascunho"
             )
 
         else:
+
             st.caption(
                 f"⚪ Versão {version} inativa"
             )
 
     # ==================================================
-    # INDICADORES
+    # STATUS DA VOTAÇÃO
     # ==================================================
 
     st.divider()
@@ -2611,6 +2876,10 @@ def show_maintenance():
         "Janela diária: 09h às 18h"
     )
 
+    # ==================================================
+    # PARTICIPAÇÃO
+    # ==================================================
+
     st.divider()
 
     participants = (
@@ -2622,6 +2891,7 @@ def show_maintenance():
     )
 
     try:
+
         participation_today = (
             get_today_participation_count()
         )
@@ -2633,6 +2903,7 @@ def show_maintenance():
         database_ok = True
 
     except Exception:
+
         participation_today = 0
         votes_today = 0
         database_ok = False
@@ -2648,6 +2919,7 @@ def show_maintenance():
     )
 
     if total_participants > 0:
+
         participation_rate = (
             participation_today
             / total_participants
@@ -2665,6 +2937,10 @@ def show_maintenance():
             f"de participação"
         )
 
+    # ==================================================
+    # PARTICIPANTES
+    # ==================================================
+
     st.divider()
 
     st.subheader(
@@ -2676,6 +2952,15 @@ def show_maintenance():
         total_participants,
     )
 
+    # Amanhã entra aqui a gestão:
+    # adicionar participante
+    # desativar participante
+    # reativar participante
+
+    # ==================================================
+    # BANCO
+    # ==================================================
+
     st.divider()
 
     st.subheader(
@@ -2683,6 +2968,7 @@ def show_maintenance():
     )
 
     if database_ok:
+
         st.success(
             "Supabase conectado"
         )
@@ -2694,6 +2980,7 @@ def show_maintenance():
         )
 
     else:
+
         st.error(
             "Não foi possível consultar "
             "o Supabase."
@@ -2718,7 +3005,7 @@ if st.session_state.user_email is None:
 
 
 # ==================================================
-# CONTROLE PRINCIPAL
+# CONTROLE PRINCIPAL DO APP
 # ==================================================
 
 if st.session_state.user_email is None:
@@ -2731,6 +3018,10 @@ else:
         get_maintenance_mode()
     )
 
+    # ------------------------------------------------
+    # MANUTENÇÃO
+    # ------------------------------------------------
+
     if (
         maintenance_active
         and not is_admin()
@@ -2740,8 +3031,14 @@ else:
 
     else:
 
-        # Primeiro verifica se existe
-        # uma mensagem publicada ainda não vista.
+        # ------------------------------------------------
+        # MENSAGEM DA VERSÃO
+        # ------------------------------------------------
+        # Antes de abrir o restante do app,
+        # verifica se existe mensagem publicada
+        # ainda não vista por este participante.
+        # ------------------------------------------------
+
         announcement = (
             should_show_announcement()
         )
@@ -2754,6 +3051,10 @@ else:
 
         else:
 
+            # ------------------------------------------------
+            # NAVEGAÇÃO
+            # ------------------------------------------------
+
             special_pages = {
                 "voting",
                 "review",
@@ -2764,7 +3065,12 @@ else:
                 st.session_state.page
                 not in special_pages
             ):
+
                 show_navigation()
+
+            # ------------------------------------------------
+            # ROTAS
+            # ------------------------------------------------
 
             if st.session_state.page == "home":
 
