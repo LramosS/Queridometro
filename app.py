@@ -26,6 +26,7 @@ VOTING_START = time(9, 0)
 VOTING_END = time(18, 0)
 
 REMEMBER_COOKIE = "queridometro_email"
+COOKIE_DAYS = 365
 
 PHOTO_BUCKET = "profile-photos"
 
@@ -97,9 +98,7 @@ EMOJI_OPTIONS = {
     },
 }
 
-COUNTED_EMOJIS = list(
-    EMOJI_OPTIONS.keys()
-)
+COUNTED_EMOJIS = list(EMOJI_OPTIONS.keys())
 
 
 # ==================================================
@@ -149,7 +148,7 @@ DEFAULT_SESSION = {
     "votes": {},
     "current_vote_index": 0,
     "confirm_submission": False,
-    "cookie_checked": False,
+    "confirm_remove_photo": False,
 }
 
 for key, value in DEFAULT_SESSION.items():
@@ -399,32 +398,69 @@ def login_user(email):
 
 
 def try_cookie_login():
-    if st.session_state.cookie_checked:
+    """
+    Recupera o login diretamente dos cookies
+    enviados pelo navegador ao Streamlit.
+
+    Isso é mais confiável no celular do que depender
+    da leitura assíncrona do CookieManager.
+    """
+
+    if st.session_state.user_email is not None:
         return
 
-    st.session_state.cookie_checked = True
-
-    saved_email = cookie_manager.get(
-        cookie=REMEMBER_COOKIE
-    )
+    try:
+        saved_email = st.context.cookies.get(
+            REMEMBER_COOKIE
+        )
+    except Exception:
+        saved_email = None
 
     if saved_email:
         login_user(saved_email)
 
 
-def logout():
+def save_login_cookie(email):
+    """
+    Grava o e-mail neste navegador por até 365 dias.
+    Serve apenas para conveniência de login.
+    """
+
+    try:
+        expiration = (
+            datetime.now()
+            + timedelta(days=COOKIE_DAYS)
+        )
+
+        cookie_manager.set(
+            REMEMBER_COOKIE,
+            email,
+            expires_at=expiration,
+            key="set_queridometro_email",
+        )
+
+        return True
+
+    except Exception:
+        return False
+
+
+def delete_login_cookie():
     try:
         cookie_manager.delete(
             cookie=REMEMBER_COOKIE,
             key="delete_queridometro_email",
         )
+
     except Exception:
         pass
 
+
+def logout():
+    delete_login_cookie()
+
     for key, value in DEFAULT_SESSION.items():
         st.session_state[key] = value
-
-    st.session_state.cookie_checked = True
 
     st.rerun()
 
@@ -672,17 +708,10 @@ def show_login():
 
         else:
             if remember:
-                expiration = (
-                    datetime.now()
-                    + timedelta(days=30)
-                )
+                save_login_cookie(email)
 
-                cookie_manager.set(
-                    REMEMBER_COOKIE,
-                    email,
-                    expires_at=expiration,
-                    key="set_queridometro_email",
-                )
+            else:
+                delete_login_cookie()
 
             st.rerun()
 
@@ -906,7 +935,7 @@ def show_emojis():
             'gap:16px;'
             'padding:14px 0;'
             '">'
-            f'<div style="font-size:34px;min-width:46px;">'
+            '<div style="font-size:34px;min-width:46px;">'
             f'{emoji}'
             '</div>'
             '<div>'
@@ -935,6 +964,7 @@ def show_emojis():
 
         st.divider()
 
+
 # ==================================================
 # PERFIL
 # ==================================================
@@ -950,7 +980,9 @@ def show_profile():
     )
 
     if st.session_state.profile_photo_url:
-        col1, col2, col3 = st.columns([1, 1, 1])
+        col1, col2, col3 = (
+            st.columns([1, 1, 1])
+        )
 
         with col2:
             st.image(
@@ -960,7 +992,8 @@ def show_profile():
 
     else:
         st.info(
-            "Você ainda não adicionou uma foto."
+            "Você ainda não adicionou "
+            "uma foto."
         )
 
     st.divider()
@@ -986,7 +1019,8 @@ def show_profile():
         )
 
         st.caption(
-            "Arraste e redimensione o quadrado."
+            "Arraste e redimensione "
+            "o quadrado."
         )
 
         cropped_image = st_cropper(
@@ -1013,19 +1047,59 @@ def show_profile():
             if save_profile_photo(
                 cropped_image
             ):
+                st.session_state.confirm_remove_photo = False
+
                 st.success(
                     "Foto salva."
                 )
 
                 st.rerun()
 
+    # ----------------------------------------------
+    # REMOVER FOTO COM CONFIRMAÇÃO
+    # ----------------------------------------------
+
     if st.session_state.profile_photo_url:
-        if st.button(
-            "Remover foto",
-            use_container_width=True,
-        ):
-            if remove_profile_photo():
+
+        if not st.session_state.confirm_remove_photo:
+
+            if st.button(
+                "Remover foto",
+                use_container_width=True,
+            ):
+                st.session_state.confirm_remove_photo = True
                 st.rerun()
+
+        else:
+
+            st.warning(
+                "⚠️ Tem certeza que deseja "
+                "remover a foto?"
+            )
+
+            col_cancel, col_confirm = (
+                st.columns(2)
+            )
+
+            with col_cancel:
+                if st.button(
+                    "Cancelar",
+                    use_container_width=True,
+                    key="cancel_remove_photo",
+                ):
+                    st.session_state.confirm_remove_photo = False
+                    st.rerun()
+
+            with col_confirm:
+                if st.button(
+                    "Sim, remover",
+                    type="primary",
+                    use_container_width=True,
+                    key="confirm_remove_photo_button",
+                ):
+                    if remove_profile_photo():
+                        st.session_state.confirm_remove_photo = False
+                        st.rerun()
 
     st.divider()
 
@@ -1034,7 +1108,8 @@ def show_profile():
         use_container_width=True,
     ):
         logout()
-        
+
+
 # ==================================================
 # VOTAÇÃO
 # ==================================================
@@ -1054,10 +1129,6 @@ def show_voting():
             "neste horário."
         )
 
-        if st.button("Voltar"):
-            st.session_state.page = "home"
-            st.rerun()
-
         return
 
     if has_voted_today():
@@ -1065,10 +1136,6 @@ def show_voting():
             "Você já enviou "
             "sua votação de hoje."
         )
-
-        if st.button("Voltar"):
-            st.session_state.page = "home"
-            st.rerun()
 
         return
 
@@ -1079,6 +1146,13 @@ def show_voting():
     total_people = len(
         voting_list
     )
+
+    if total_people == 0:
+        st.info(
+            "Não há outros participantes "
+            "disponíveis para votação."
+        )
+        return
 
     current_index = (
         st.session_state.current_vote_index
@@ -1634,7 +1708,9 @@ def show_result_card(
     photo_url=None,
 ):
     if photo_url:
-        col1, col2, col3 = st.columns([1, 1, 1])
+        col1, col2, col3 = (
+            st.columns([1, 1, 1])
+        )
 
         with col2:
             st.image(
