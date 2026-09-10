@@ -40,7 +40,7 @@ EMOJI_OPTIONS = {
     "🐍": "Cobrinha",
     "🧳": "Mala",
     "🤝": "Parceria",
-    "➖": "Não interage",
+    "😐": "Não interage",
 }
 
 COUNTED_EMOJIS = [
@@ -50,7 +50,7 @@ COUNTED_EMOJIS = [
     "🐍",
     "🧳",
     "🤝",
-    "➖",
+    "😐",
 ]
 
 
@@ -466,7 +466,7 @@ def get_today_votes_count():
 
 
 # ==================================================
-# LOGIN
+# TELA DE LOGIN
 # ==================================================
 
 def show_login():
@@ -912,11 +912,11 @@ def show_voting():
                 st.rerun()
 
     if st.button(
-        "➖ Não interage",
+        "😐 Não interage",
         key=f"{target_email}_none",
         use_container_width=True,
     ):
-        st.session_state.votes[target_email] = "➖"
+        st.session_state.votes[target_email] = "😐"
         st.rerun()
 
     selected_vote = st.session_state.votes.get(
