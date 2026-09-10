@@ -96,9 +96,33 @@ EMOJI_OPTIONS = {
             "chamar atenção ou aparecer."
         ),
     },
+    "🍻": {
+        "name": "Bora tomar uma?",
+        "description": (
+            "Pessoa com quem você toparia "
+            "esticar a conversa depois do expediente."
+        ),
+    },
 }
 
-COUNTED_EMOJIS = list(EMOJI_OPTIONS.keys())
+FRIDAY_EMOJI = "🍻"
+
+BASE_EMOJIS = [
+    "❤️",
+    "🌱",
+    "🔥",
+    "🐍",
+    "🧳",
+    "🤝",
+    "😐",
+    "🦚",
+]
+
+COUNTED_EMOJIS = BASE_EMOJIS + [FRIDAY_EMOJI]
+
+
+def is_friday():
+    return today_br().weekday() == 4
 
 
 # ==================================================
@@ -947,6 +971,39 @@ def schedule_announcement(
         return False
 
 
+def update_announcement_schedule(
+    announcement_id,
+    scheduled_at,
+):
+    try:
+        (
+            supabase
+            .table("app_announcements")
+            .update(
+                {
+                    "scheduled_at": scheduled_at.isoformat(),
+                    "status": "scheduled",
+                    "updated_at": now_br().isoformat(),
+                }
+            )
+            .eq(
+                "id",
+                announcement_id,
+            )
+            .execute()
+        )
+
+        return True
+
+    except Exception as error:
+        st.error(
+            "Não foi possível alterar "
+            "o agendamento."
+        )
+        st.code(str(error))
+        return False
+
+
 def deactivate_announcement(
     announcement_id,
 ):
@@ -1300,6 +1357,8 @@ def show_emojis():
     st.divider()
 
     for emoji, data in EMOJI_OPTIONS.items():
+        if emoji == FRIDAY_EMOJI and not is_friday():
+            continue
 
         emoji_name = html.escape(
             data["name"]
@@ -1706,6 +1765,21 @@ def show_voting():
             use_container_width=True,
         ):
             select_vote("🦚")
+
+    if is_friday():
+
+        st.divider()
+
+        st.caption(
+            "🍻 Especial de sexta-feira"
+        )
+
+        if st.button(
+            "🍻 Bora tomar uma?",
+            key=f"vote_{target_email}_beer",
+            use_container_width=True,
+        ):
+            select_vote("🍻")
 
     selected_vote = (
         st.session_state.votes.get(
@@ -2218,7 +2292,12 @@ def show_result_card(
 
     emoji_items = ""
 
-    for emoji in COUNTED_EMOJIS:
+    visible_emojis = BASE_EMOJIS.copy()
+
+    if counts.get(FRIDAY_EMOJI, 0) > 0:
+        visible_emojis.append(FRIDAY_EMOJI)
+
+    for emoji in visible_emojis:
 
         emoji_items += (
             '<div style="'
@@ -2244,7 +2323,7 @@ def show_result_card(
     result_html = (
         '<div style="'
         'display:grid;'
-        'grid-template-columns:repeat(8,minmax(0,1fr));'
+        f'grid-template-columns:repeat({len(visible_emojis)},minmax(0,1fr));'
         'width:100%;'
         'gap:2px;'
         'align-items:center;'
@@ -2894,23 +2973,184 @@ def show_maintenance():
                 f"{scheduled_at.strftime('%d/%m/%Y às %H:%M')}"
             )
 
-        if st.button(
-            "Cancelar agendamento",
-            key=(
-                f"cancel_schedule_"
-                f"{announcement['id']}"
-            ),
-            use_container_width=True,
-        ):
+        col_edit, col_cancel = st.columns(2)
 
-            if deactivate_announcement(
-                announcement["id"]
+        with col_edit:
+
+            if st.button(
+                "✏️ Editar agendamento",
+                key=(
+                    f"edit_schedule_"
+                    f"{announcement['id']}"
+                ),
+                use_container_width=True,
             ):
 
-                st.success(
-                    "Agendamento cancelado."
-                )
+                st.session_state[
+                    "editing_announcement_schedule"
+                ] = announcement["id"]
+
                 st.rerun()
+
+        with col_cancel:
+
+            if st.button(
+                "Cancelar agendamento",
+                key=(
+                    f"cancel_schedule_"
+                    f"{announcement['id']}"
+                ),
+                use_container_width=True,
+            ):
+
+                if deactivate_announcement(
+                    announcement["id"]
+                ):
+
+                    st.success(
+                        "Agendamento cancelado."
+                    )
+
+                    st.rerun()
+
+        if (
+            st.session_state.get(
+                "editing_announcement_schedule"
+            )
+            == announcement["id"]
+        ):
+
+            st.info(
+                "✏️ Alterar data e horário"
+            )
+
+            current_date = (
+                scheduled_at.date()
+                if scheduled_at
+                else today_br() + timedelta(days=1)
+            )
+
+            current_time = (
+                scheduled_at.time().replace(
+                    tzinfo=None
+                )
+                if scheduled_at
+                else time(9, 0)
+            )
+
+            col_date, col_time = st.columns(2)
+
+            with col_date:
+
+                new_date_text = st.text_input(
+                    "Nova data",
+                    value=current_date.strftime(
+                        "%d/%m/%Y"
+                    ),
+                    key=(
+                        f"edit_date_"
+                        f"{announcement['id']}"
+                    ),
+                )
+
+            with col_time:
+
+                new_time = st.time_input(
+                    "Novo horário",
+                    value=current_time,
+                    key=(
+                        f"edit_time_"
+                        f"{announcement['id']}"
+                    ),
+                )
+
+            new_scheduled_datetime = None
+
+            try:
+
+                new_date = datetime.strptime(
+                    new_date_text,
+                    "%d/%m/%Y",
+                ).date()
+
+                new_scheduled_datetime = (
+                    datetime.combine(
+                        new_date,
+                        new_time,
+                        tzinfo=TIMEZONE,
+                    )
+                )
+
+            except ValueError:
+
+                st.warning(
+                    "Digite a data no formato "
+                    "DD/MM/AAAA."
+                )
+
+            col_save, col_close = st.columns(2)
+
+            with col_save:
+
+                if st.button(
+                    "💾 Salvar alteração",
+                    type="primary",
+                    use_container_width=True,
+                    key=(
+                        f"save_schedule_"
+                        f"{announcement['id']}"
+                    ),
+                ):
+
+                    if new_scheduled_datetime is None:
+
+                        st.warning(
+                            "Informe uma data válida."
+                        )
+
+                    elif (
+                        new_scheduled_datetime
+                        <= now_br()
+                    ):
+
+                        st.warning(
+                            "Escolha uma data "
+                            "e horário futuros."
+                        )
+
+                    elif update_announcement_schedule(
+                        announcement["id"],
+                        new_scheduled_datetime,
+                    ):
+
+                        st.session_state.pop(
+                            "editing_announcement_schedule",
+                            None,
+                        )
+
+                        st.success(
+                            "Agendamento alterado."
+                        )
+
+                        st.rerun()
+
+            with col_close:
+
+                if st.button(
+                    "Fechar",
+                    use_container_width=True,
+                    key=(
+                        f"close_schedule_"
+                        f"{announcement['id']}"
+                    ),
+                ):
+
+                    st.session_state.pop(
+                        "editing_announcement_schedule",
+                        None,
+                    )
+
+                    st.rerun()
 
         st.divider()
 
