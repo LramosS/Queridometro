@@ -1409,16 +1409,13 @@ def get_results(
 
     return results
 
-
 def show_result_card(
     name,
     counts,
     photo_url=None,
 ):
     if photo_url:
-        col1, col2, col3 = (
-            st.columns([1, 1, 1])
-        )
+        col1, col2, col3 = st.columns([1, 1, 1])
 
         with col2:
             st.image(
@@ -1435,7 +1432,7 @@ def show_result_card(
                 font-size:22px;
                 font-weight:700;
                 margin-top:18px;
-                margin-bottom:12px;
+                margin-bottom:14px;
             "
         >
             {html.escape(name)}
@@ -1444,37 +1441,48 @@ def show_result_card(
         unsafe_allow_html=True,
     )
 
-    columns = st.columns(
-        len(COUNTED_EMOJIS)
-    )
+    emoji_html = ""
 
-    for column, emoji in zip(
-        columns,
-        COUNTED_EMOJIS,
-    ):
-        with column:
-            st.markdown(
-                f"""
+    for emoji in COUNTED_EMOJIS:
+        emoji_html += f"""
+            <div style="
+                text-align:center;
+                min-width:0;
+            ">
                 <div style="
-                    text-align:center;
-                    font-size:24px;
+                    font-size:26px;
+                    line-height:1.2;
                 ">
                     {emoji}
                 </div>
 
                 <div style="
-                    text-align:center;
                     font-size:18px;
                     font-weight:700;
+                    margin-top:6px;
                 ">
                     {counts[emoji]}
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            </div>
+        """
+
+    st.markdown(
+        f"""
+        <div style="
+            display:grid;
+            grid-template-columns:repeat(6, minmax(0, 1fr));
+            width:100%;
+            gap:4px;
+            align-items:center;
+            margin-bottom:20px;
+        ">
+            {emoji_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.divider()
-
 
 # ==================================================
 # RESULTADOS
