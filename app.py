@@ -33,25 +33,73 @@ ADMIN_EMAILS = {
     "lucasramoseconomia@gmail.com"
 }
 
+
+# ==================================================
+# EMOJIS
+# ==================================================
+
 EMOJI_OPTIONS = {
-    "❤️": "Coração",
-    "🌱": "Planta",
-    "🔥": "Foguinho",
-    "🐍": "Cobrinha",
-    "🧳": "Mala",
-    "🤝": "Parceria",
-    "😐": "Não interage",
+    "❤️": {
+        "name": "Coração",
+        "description": (
+            "Pessoa querida, acolhedora ou com quem "
+            "a interação foi especialmente positiva."
+        ),
+    },
+    "🌱": {
+        "name": "Planta",
+        "description": (
+            "Pessoa mais quieta, discreta ou que "
+            "passou mais despercebida no dia."
+        ),
+    },
+    "🔥": {
+        "name": "Foguinho",
+        "description": (
+            "Pessoa animada, intensa ou que "
+            "movimentou o ambiente."
+        ),
+    },
+    "🐍": {
+        "name": "Cobrinha",
+        "description": (
+            "Pessoa que teve uma atitude atravessada, "
+            "provocativa ou pouco legal."
+        ),
+    },
+    "🧳": {
+        "name": "Mala",
+        "description": (
+            "Pessoa que esteve chata, cansativa "
+            "ou difícil de lidar."
+        ),
+    },
+    "🤝": {
+        "name": "Parceria",
+        "description": (
+            "Pessoa colaborativa, disponível ou "
+            "que somou com você ou com o grupo."
+        ),
+    },
+    "😐": {
+        "name": "Não interage",
+        "description": (
+            "Você praticamente não interagiu "
+            "com essa pessoa no dia."
+        ),
+    },
+    "🦚": {
+        "name": "Pavão",
+        "description": (
+            "Pessoa que parece estar querendo "
+            "chamar atenção ou aparecer."
+        ),
+    },
 }
 
-COUNTED_EMOJIS = [
-    "❤️",
-    "🌱",
-    "🔥",
-    "🐍",
-    "🧳",
-    "🤝",
-    "😐",
-]
+COUNTED_EMOJIS = list(
+    EMOJI_OPTIONS.keys()
+)
 
 
 # ==================================================
@@ -267,8 +315,7 @@ def show_maintenance_screen():
     )
 
     st.caption(
-        "Se você já estava com o app aberto, "
-        "atualize esta página quando "
+        "Atualize esta página quando "
         "a manutenção terminar."
     )
 
@@ -649,6 +696,7 @@ def show_navigation():
         "🏠 Hoje",
         "📊 Resultados",
         "🗓️ Histórico",
+        "📖 Emojis",
         "👤 Perfil",
     ]
 
@@ -656,6 +704,7 @@ def show_navigation():
         "🏠 Hoje": "home",
         "📊 Resultados": "results",
         "🗓️ Histórico": "history",
+        "📖 Emojis": "emojis",
         "👤 Perfil": "profile",
     }
 
@@ -762,7 +811,7 @@ def show_home():
         )
     )
 
-    if voting_status() == "before":
+    if status == "before":
         st.info(
             "⏰ A votação de hoje "
             "abre às 09h."
@@ -824,6 +873,64 @@ def show_home():
             "já estão disponíveis em "
             "**📊 Resultados**."
         )
+
+
+# ==================================================
+# ABA EMOJIS
+# ==================================================
+
+def show_emojis():
+    st.title(
+        "📖 Emojis"
+    )
+
+    st.write(
+        "Consulte aqui o significado "
+        "de cada opção do Queridômetro."
+    )
+
+    st.divider()
+
+    for emoji, data in EMOJI_OPTIONS.items():
+
+        st.markdown(
+            f"""
+            <div style="
+                display:flex;
+                align-items:flex-start;
+                gap:16px;
+                padding:14px 0;
+            ">
+                <div style="
+                    font-size:34px;
+                    min-width:46px;
+                ">
+                    {emoji}
+                </div>
+
+                <div>
+                    <div style="
+                        font-size:20px;
+                        font-weight:700;
+                        margin-bottom:4px;
+                    ">
+                        {data["name"]}
+                    </div>
+
+                    <div style="
+                        font-size:16px;
+                        line-height:1.5;
+                        opacity:0.85;
+                    ">
+                        {data["description"]}
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.divider()
 
 
 # ==================================================
@@ -1079,16 +1186,33 @@ def show_voting():
 
                 st.rerun()
 
-    if st.button(
-        "😐 Não interage",
-        key=f"{target_email}_none",
-        use_container_width=True,
-    ):
-        st.session_state.votes[
-            target_email
-        ] = "😐"
+    col7, col8 = (
+        st.columns(2)
+    )
 
-        st.rerun()
+    with col7:
+        if st.button(
+            "😐 Não interage",
+            key=f"{target_email}_neutral",
+            use_container_width=True,
+        ):
+            st.session_state.votes[
+                target_email
+            ] = "😐"
+
+            st.rerun()
+
+    with col8:
+        if st.button(
+            "🦚 Pavão",
+            key=f"{target_email}_peacock",
+            use_container_width=True,
+        ):
+            st.session_state.votes[
+                target_email
+            ] = "🦚"
+
+            st.rerun()
 
     selected_vote = (
         st.session_state.votes.get(
@@ -1100,7 +1224,7 @@ def show_voting():
         st.success(
             f"Selecionado: "
             f"{selected_vote} "
-            f"{EMOJI_OPTIONS[selected_vote]}"
+            f"{EMOJI_OPTIONS[selected_vote]['name']}"
         )
 
     else:
@@ -1232,7 +1356,11 @@ def show_review():
                     </strong>
                     <br>
                     {vote}
-                    {EMOJI_OPTIONS[vote]}
+                    {
+                        EMOJI_OPTIONS[
+                            vote
+                        ]["name"]
+                    }
                     """,
                     unsafe_allow_html=True,
                 )
@@ -1538,14 +1666,14 @@ def show_result_card(
                 min-width:0;
             ">
                 <div style="
-                    font-size:24px;
+                    font-size:22px;
                     line-height:1.2;
                 ">
                     {emoji}
                 </div>
 
                 <div style="
-                    font-size:17px;
+                    font-size:16px;
                     font-weight:700;
                     margin-top:6px;
                 ">
@@ -1559,9 +1687,9 @@ def show_result_card(
         <div style="
             display:grid;
             grid-template-columns:
-                repeat(7, minmax(0, 1fr));
+                repeat(8, minmax(0, 1fr));
             width:100%;
-            gap:3px;
+            gap:2px;
             align-items:center;
             margin-bottom:20px;
         ">
@@ -1778,10 +1906,6 @@ def show_maintenance():
         get_maintenance_mode()
     )
 
-    # ----------------------------------------------
-    # CONTROLE DO APP
-    # ----------------------------------------------
-
     st.subheader(
         "Controle do app"
     )
@@ -1833,10 +1957,6 @@ def show_maintenance():
 
     st.divider()
 
-    # ----------------------------------------------
-    # STATUS DA VOTAÇÃO
-    # ----------------------------------------------
-
     st.subheader(
         "Status da votação"
     )
@@ -1876,10 +1996,6 @@ def show_maintenance():
         votes_today = 0
         database_ok = False
 
-    # ----------------------------------------------
-    # PARTICIPAÇÃO
-    # ----------------------------------------------
-
     st.subheader(
         "Participação de hoje"
     )
@@ -1911,10 +2027,6 @@ def show_maintenance():
 
     st.divider()
 
-    # ----------------------------------------------
-    # PARTICIPANTES
-    # ----------------------------------------------
-
     st.subheader(
         "Participantes"
     )
@@ -1925,10 +2037,6 @@ def show_maintenance():
     )
 
     st.divider()
-
-    # ----------------------------------------------
-    # BANCO
-    # ----------------------------------------------
 
     st.subheader(
         "Banco de dados"
@@ -1985,20 +2093,12 @@ else:
         get_maintenance_mode()
     )
 
-    # ------------------------------------------------
-    # APP PAUSADO
-    # ------------------------------------------------
-
     if (
         maintenance_active
         and not is_admin()
     ):
 
         show_maintenance_screen()
-
-    # ------------------------------------------------
-    # APP NORMAL / ADMIN
-    # ------------------------------------------------
 
     else:
 
@@ -2025,6 +2125,10 @@ else:
         elif st.session_state.page == "history":
 
             show_history()
+
+        elif st.session_state.page == "emojis":
+
+            show_emojis()
 
         elif st.session_state.page == "profile":
 
