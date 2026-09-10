@@ -943,12 +943,12 @@ def show_emojis():
 def show_voting():
 
     if st.button(
-    "← Voltar para início",
-    use_container_width=True,
-):
-    st.session_state.page = "home"
-    st.rerun()
-    
+        "← Voltar para início",
+        use_container_width=True,
+    ):
+        st.session_state.page = "home"
+        st.rerun()
+
     if voting_status() != "open":
         st.warning(
             "A votação não está disponível "
