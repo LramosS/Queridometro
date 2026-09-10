@@ -2590,6 +2590,11 @@ def show_maintenance():
                 ),
                 key="announcement_date",
             )
+            
+            st.caption(
+                f"Data selecionada: "
+                f"{scheduled_date.strftime('%d/%m/%Y')}"
+            )
 
         with col_time:
 
