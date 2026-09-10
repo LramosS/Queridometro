@@ -935,7 +935,106 @@ def show_emojis():
 
         st.divider()
 
+# ==================================================
+# PERFIL
+# ==================================================
 
+def show_profile():
+    st.title(
+        "👤 Meu perfil"
+    )
+
+    show_name(
+        st.session_state.user_name,
+        "h3",
+    )
+
+    if st.session_state.profile_photo_url:
+        col1, col2, col3 = st.columns([1, 1, 1])
+
+        with col2:
+            st.image(
+                st.session_state.profile_photo_url,
+                width=180,
+            )
+
+    else:
+        st.info(
+            "Você ainda não adicionou uma foto."
+        )
+
+    st.divider()
+
+    uploaded_photo = st.file_uploader(
+        "Adicionar ou trocar foto",
+        type=[
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+        ],
+        key="edit_photo",
+    )
+
+    if uploaded_photo is not None:
+        image = Image.open(
+            uploaded_photo
+        )
+
+        st.subheader(
+            "Ajuste sua foto"
+        )
+
+        st.caption(
+            "Arraste e redimensione o quadrado."
+        )
+
+        cropped_image = st_cropper(
+            image,
+            realtime_update=True,
+            box_color="white",
+            aspect_ratio=(1, 1),
+            key="edit_cropper",
+        )
+
+        st.write(
+            "Prévia"
+        )
+
+        st.image(
+            cropped_image,
+            width=220,
+        )
+
+        if st.button(
+            "Salvar foto",
+            use_container_width=True,
+        ):
+            if save_profile_photo(
+                cropped_image
+            ):
+                st.success(
+                    "Foto salva."
+                )
+
+                st.rerun()
+
+    if st.session_state.profile_photo_url:
+        if st.button(
+            "Remover foto",
+            use_container_width=True,
+        ):
+            if remove_profile_photo():
+                st.rerun()
+
+    st.divider()
+
+    if st.button(
+        "Sair do Queridômetro",
+        use_container_width=True,
+    ):
+        logout()
+        
 # ==================================================
 # VOTAÇÃO
 # ==================================================
