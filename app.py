@@ -1535,9 +1535,7 @@ def show_result_card(
     photo_url=None,
 ):
     if photo_url:
-        col1, col2, col3 = (
-            st.columns([1, 1, 1])
-        )
+        col1, col2, col3 = st.columns([1, 1, 1])
 
         with col2:
             st.image(
@@ -1563,45 +1561,33 @@ def show_result_card(
         unsafe_allow_html=True,
     )
 
-    emoji_html = ""
+    emoji_items = ""
 
     for emoji in COUNTED_EMOJIS:
-        emoji_html += f"""
-            <div style="
-                text-align:center;
-                min-width:0;
-            ">
-                <div style="
-                    font-size:22px;
-                    line-height:1.2;
-                ">
-                    {emoji}
-                </div>
+        emoji_items += (
+            '<div style="text-align:center;min-width:0;">'
+            f'<div style="font-size:22px;line-height:1.2;">{emoji}</div>'
+            '<div style="font-size:16px;font-weight:700;margin-top:6px;">'
+            f'{counts[emoji]}'
+            '</div>'
+            '</div>'
+        )
 
-                <div style="
-                    font-size:16px;
-                    font-weight:700;
-                    margin-top:6px;
-                ">
-                    {counts[emoji]}
-                </div>
-            </div>
-        """
+    result_html = (
+        '<div style="'
+        'display:grid;'
+        'grid-template-columns:repeat(8,minmax(0,1fr));'
+        'width:100%;'
+        'gap:2px;'
+        'align-items:center;'
+        'margin-bottom:20px;'
+        '">'
+        f'{emoji_items}'
+        '</div>'
+    )
 
     st.markdown(
-        f"""
-        <div style="
-            display:grid;
-            grid-template-columns:
-                repeat(8, minmax(0, 1fr));
-            width:100%;
-            gap:2px;
-            align-items:center;
-            margin-bottom:20px;
-        ">
-            {emoji_html}
-        </div>
-        """,
+        result_html,
         unsafe_allow_html=True,
     )
 
