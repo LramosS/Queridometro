@@ -40,7 +40,7 @@ EMOJI_OPTIONS = {
     "🐍": "Cobrinha",
     "🧳": "Mala",
     "🤝": "Parceria",
-    "➖": "Não interagi",
+    "➖": "Não interage",
 }
 
 COUNTED_EMOJIS = [
@@ -50,6 +50,7 @@ COUNTED_EMOJIS = [
     "🐍",
     "🧳",
     "🤝",
+    "➖",
 ]
 
 
@@ -226,9 +227,7 @@ def login_user(email):
     st.session_state.user_email = email
     st.session_state.user_id = participant["id"]
     st.session_state.user_name = participant["name"]
-    st.session_state.profile_photo_url = (
-        participant["photo_url"]
-    )
+    st.session_state.profile_photo_url = participant["photo_url"]
 
     st.session_state.page = "home"
     st.session_state.current_vote_index = 0
@@ -287,9 +286,7 @@ def image_to_bytes(image):
 
 
 def get_photo_path():
-    return (
-        f"{st.session_state.user_id}/avatar.jpg"
-    )
+    return f"{st.session_state.user_id}/avatar.jpg"
 
 
 def save_profile_photo(image):
@@ -333,9 +330,7 @@ def save_profile_photo(image):
             .execute()
         )
 
-        st.session_state.profile_photo_url = (
-            public_url
-        )
+        st.session_state.profile_photo_url = public_url
 
         load_participants.clear()
 
@@ -542,36 +537,30 @@ def show_navigation():
         "👤 Perfil": "profile",
     }
 
-    if (
-        st.session_state.user_email
-        in ADMIN_EMAILS
-    ):
+    if st.session_state.user_email in ADMIN_EMAILS:
         options.append(
             "⚙️ Manutenção"
         )
 
-        page_map[
-            "⚙️ Manutenção"
-        ] = "maintenance"
+        page_map["⚙️ Manutenção"] = "maintenance"
 
     reverse_map = {
         value: key
-        for key, value
-        in page_map.items()
+        for key, value in page_map.items()
     }
 
-    current_page = (
-        st.session_state.page
-    )
+    current_page = st.session_state.page
 
     current_label = reverse_map.get(
         current_page,
         "🏠 Hoje",
     )
 
-    index = options.index(
-        current_label
-    ) if current_label in options else 0
+    index = (
+        options.index(current_label)
+        if current_label in options
+        else 0
+    )
 
     selected = st.radio(
         "Navegação",
@@ -584,29 +573,21 @@ def show_navigation():
 
     selected_page = page_map[selected]
 
-    if (
-        selected_page
-        != st.session_state.page
-    ):
-        st.session_state.page = (
-            selected_page
-        )
-
+    if selected_page != st.session_state.page:
+        st.session_state.page = selected_page
         st.rerun()
 
     st.divider()
 
 
 # ==================================================
-# HOME / HOJE
+# HOME
 # ==================================================
 
 def show_home():
     status = voting_status()
 
-    already_voted = (
-        has_voted_today()
-    )
+    already_voted = has_voted_today()
 
     st.title(
         "🎭 Queridômetro"
@@ -627,11 +608,7 @@ def show_home():
         >
             Olá,
             <strong>
-                {
-                    html.escape(
-                        st.session_state.user_name
-                    )
-                }
+                {html.escape(st.session_state.user_name)}
             </strong>!
         </div>
         """,
@@ -680,9 +657,7 @@ def show_home():
                 type="primary",
                 use_container_width=True,
             ):
-                st.session_state.page = (
-                    "voting"
-                )
+                st.session_state.page = "voting"
 
                 st.session_state.current_vote_index = 0
 
@@ -722,9 +697,7 @@ def show_profile():
     )
 
     if st.session_state.profile_photo_url:
-        col1, col2, col3 = (
-            st.columns([1, 1, 1])
-        )
+        col1, col2, col3 = st.columns([1, 1, 1])
 
         with col2:
             st.image(
@@ -734,8 +707,7 @@ def show_profile():
 
     else:
         st.info(
-            "Você ainda não adicionou "
-            "uma foto."
+            "Você ainda não adicionou uma foto."
         )
 
     st.divider()
@@ -761,8 +733,7 @@ def show_profile():
         )
 
         st.caption(
-            "Arraste e redimensione "
-            "o quadrado."
+            "Arraste e redimensione o quadrado."
         )
 
         cropped_image = st_cropper(
@@ -845,21 +816,13 @@ def show_voting():
 
         return
 
-    participants = (
-        load_participants()
-    )
+    participants = load_participants()
 
-    voting_list = (
-        get_voting_list()
-    )
+    voting_list = get_voting_list()
 
-    total_people = len(
-        voting_list
-    )
+    total_people = len(voting_list)
 
-    current_index = (
-        st.session_state.current_vote_index
-    )
+    current_index = st.session_state.current_vote_index
 
     current_index = max(
         0,
@@ -869,17 +832,11 @@ def show_voting():
         ),
     )
 
-    st.session_state.current_vote_index = (
-        current_index
-    )
+    st.session_state.current_vote_index = current_index
 
-    target_email = (
-        voting_list[current_index]
-    )
+    target_email = voting_list[current_index]
 
-    target = (
-        participants[target_email]
-    )
+    target = participants[target_email]
 
     target_name = target["name"]
     target_photo = target["photo_url"]
@@ -900,9 +857,7 @@ def show_voting():
     )
 
     if target_photo:
-        col1, col2, col3 = (
-            st.columns([1, 1, 1])
-        )
+        col1, col2, col3 = st.columns([1, 1, 1])
 
         with col2:
             st.image(
@@ -920,9 +875,7 @@ def show_voting():
         "com essa pessoa hoje?"
     )
 
-    col1, col2, col3 = (
-        st.columns(3)
-    )
+    col1, col2, col3 = st.columns(3)
 
     first_row = [
         ("❤️", "Coração", col1),
@@ -934,20 +887,13 @@ def show_voting():
         with column:
             if st.button(
                 f"{emoji} {label}",
-                key=(
-                    f"{target_email}_{emoji}"
-                ),
+                key=f"{target_email}_{emoji}",
                 use_container_width=True,
             ):
-                st.session_state.votes[
-                    target_email
-                ] = emoji
-
+                st.session_state.votes[target_email] = emoji
                 st.rerun()
 
-    col4, col5, col6 = (
-        st.columns(3)
-    )
+    col4, col5, col6 = st.columns(3)
 
     second_row = [
         ("🐍", "Cobrinha", col4),
@@ -959,32 +905,22 @@ def show_voting():
         with column:
             if st.button(
                 f"{emoji} {label}",
-                key=(
-                    f"{target_email}_{emoji}"
-                ),
+                key=f"{target_email}_{emoji}",
                 use_container_width=True,
             ):
-                st.session_state.votes[
-                    target_email
-                ] = emoji
-
+                st.session_state.votes[target_email] = emoji
                 st.rerun()
 
     if st.button(
-        "➖ Não interagi",
+        "➖ Não interage",
         key=f"{target_email}_none",
         use_container_width=True,
     ):
-        st.session_state.votes[
-            target_email
-        ] = "➖"
-
+        st.session_state.votes[target_email] = "➖"
         st.rerun()
 
-    selected_vote = (
-        st.session_state.votes.get(
-            target_email
-        )
+    selected_vote = st.session_state.votes.get(
+        target_email
     )
 
     if selected_vote:
@@ -1002,20 +938,15 @@ def show_voting():
 
     st.divider()
 
-    col_back, col_next = (
-        st.columns(2)
-    )
+    col_back, col_next = st.columns(2)
 
     with col_back:
         if st.button(
             "← Voltar",
             use_container_width=True,
-            disabled=(
-                current_index == 0
-            ),
+            disabled=current_index == 0,
         ):
             st.session_state.current_vote_index -= 1
-
             st.rerun()
 
     with col_next:
@@ -1028,26 +959,18 @@ def show_voting():
             if st.button(
                 "Próxima →",
                 use_container_width=True,
-                disabled=(
-                    selected_vote is None
-                ),
+                disabled=selected_vote is None,
             ):
                 st.session_state.current_vote_index += 1
-
                 st.rerun()
 
         else:
             if st.button(
                 "Revisar votação",
                 use_container_width=True,
-                disabled=(
-                    selected_vote is None
-                ),
+                disabled=selected_vote is None,
             ):
-                st.session_state.page = (
-                    "review"
-                )
-
+                st.session_state.page = "review"
                 st.rerun()
 
     answered = sum(
@@ -1067,17 +990,11 @@ def show_voting():
 # ==================================================
 
 def show_review():
-    participants = (
-        load_participants()
-    )
+    participants = load_participants()
 
-    voting_list = (
-        get_voting_list()
-    )
+    voting_list = get_voting_list()
 
-    total_people = len(
-        voting_list
-    )
+    total_people = len(voting_list)
 
     answered = sum(
         1
@@ -1101,19 +1018,13 @@ def show_review():
         voting_list,
         start=1,
     ):
-        name = (
-            participants[email]["name"]
+        name = participants[email]["name"]
+
+        vote = st.session_state.votes.get(
+            email
         )
 
-        vote = (
-            st.session_state.votes.get(
-                email
-            )
-        )
-
-        col_info, col_edit = (
-            st.columns([4, 1])
-        )
+        col_info, col_edit = st.columns([4, 1])
 
         with col_info:
             if vote:
@@ -1151,9 +1062,7 @@ def show_review():
                     )
                 )
 
-                st.session_state.page = (
-                    "voting"
-                )
+                st.session_state.page = "voting"
 
                 st.rerun()
 
@@ -1173,9 +1082,7 @@ def show_review():
             type="primary",
             use_container_width=True,
         ):
-            st.session_state.confirm_submission = (
-                True
-            )
+            st.session_state.confirm_submission = True
 
             st.rerun()
 
@@ -1186,18 +1093,14 @@ def show_review():
             "mais ser alteradas."
         )
 
-        col_cancel, col_confirm = (
-            st.columns(2)
-        )
+        col_cancel, col_confirm = st.columns(2)
 
         with col_cancel:
             if st.button(
                 "Cancelar",
                 use_container_width=True,
             ):
-                st.session_state.confirm_submission = (
-                    False
-                )
+                st.session_state.confirm_submission = False
 
                 st.rerun()
 
@@ -1215,23 +1118,17 @@ def show_review():
 # ==================================================
 
 def submit_votes():
-    participants = (
-        load_participants()
-    )
+    participants = load_participants()
 
-    voting_list = (
-        get_voting_list()
-    )
+    voting_list = get_voting_list()
 
     date_value = today_br()
 
     vote_rows = []
 
     for email in voting_list:
-        emoji = (
-            st.session_state.votes.get(
-                email
-            )
+        emoji = st.session_state.votes.get(
+            email
         )
 
         if emoji is None:
@@ -1241,22 +1138,13 @@ def submit_votes():
 
             return
 
-        if emoji == "➖":
-            continue
-
         vote_rows.append(
             {
-                "vote_date": (
-                    date_value.isoformat()
+                "vote_date": date_value.isoformat(),
+                "week_id": get_week_id(
+                    date_value
                 ),
-                "week_id": (
-                    get_week_id(
-                        date_value
-                    )
-                ),
-                "recipient_id": (
-                    participants[email]["id"]
-                ),
+                "recipient_id": participants[email]["id"],
                 "emoji": emoji,
             }
         )
@@ -1272,29 +1160,19 @@ def submit_votes():
 
         (
             supabase
-            .table(
-                "daily_participation"
-            )
+            .table("daily_participation")
             .insert(
                 {
-                    "participant_id": (
-                        st.session_state.user_id
-                    ),
-                    "vote_date": (
-                        date_value.isoformat()
-                    ),
+                    "participant_id": st.session_state.user_id,
+                    "vote_date": date_value.isoformat(),
                 }
             )
             .execute()
         )
 
-        st.session_state.confirm_submission = (
-            False
-        )
+        st.session_state.confirm_submission = False
 
-        st.session_state.page = (
-            "submitted"
-        )
+        st.session_state.page = "submitted"
 
         st.rerun()
 
@@ -1338,9 +1216,7 @@ def show_submitted():
     ):
         st.session_state.votes = {}
 
-        st.session_state.page = (
-            "home"
-        )
+        st.session_state.page = "home"
 
         st.rerun()
 
@@ -1353,9 +1229,7 @@ def get_results(
     start_date,
     end_date,
 ):
-    participants = (
-        load_participants()
-    )
+    participants = load_participants()
 
     response = (
         supabase
@@ -1377,15 +1251,9 @@ def get_results(
     results = {}
 
     for participant in participants.values():
-        results[
-            participant["id"]
-        ] = {
-            "name": (
-                participant["name"]
-            ),
-            "photo_url": (
-                participant["photo_url"]
-            ),
+        results[participant["id"]] = {
+            "name": participant["name"],
+            "photo_url": participant["photo_url"],
             "counts": {
                 emoji: 0
                 for emoji in COUNTED_EMOJIS
@@ -1393,9 +1261,7 @@ def get_results(
         }
 
     for vote in response.data:
-        recipient_id = (
-            vote["recipient_id"]
-        )
+        recipient_id = vote["recipient_id"]
 
         emoji = vote["emoji"]
 
@@ -1408,6 +1274,7 @@ def get_results(
             ]["counts"][emoji] += 1
 
     return results
+
 
 def show_result_card(
     name,
@@ -1450,14 +1317,14 @@ def show_result_card(
                 min-width:0;
             ">
                 <div style="
-                    font-size:26px;
+                    font-size:24px;
                     line-height:1.2;
                 ">
                     {emoji}
                 </div>
 
                 <div style="
-                    font-size:18px;
+                    font-size:17px;
                     font-weight:700;
                     margin-top:6px;
                 ">
@@ -1470,9 +1337,9 @@ def show_result_card(
         f"""
         <div style="
             display:grid;
-            grid-template-columns:repeat(6, minmax(0, 1fr));
+            grid-template-columns:repeat(7, minmax(0, 1fr));
             width:100%;
-            gap:4px;
+            gap:3px;
             align-items:center;
             margin-bottom:20px;
         ">
@@ -1483,6 +1350,7 @@ def show_result_card(
     )
 
     st.divider()
+
 
 # ==================================================
 # RESULTADOS
@@ -1511,9 +1379,7 @@ def show_results():
 
             return
 
-        date_value = (
-            today_br()
-        )
+        date_value = today_br()
 
         st.caption(
             date_value.strftime(
@@ -1529,15 +1395,10 @@ def show_results():
     else:
         today = today_br()
 
-        monday, sunday = (
-            get_week_dates(today)
-        )
+        monday, sunday = get_week_dates(today)
 
         if voting_status() == "open":
-            end_date = (
-                today
-                - timedelta(days=1)
-            )
+            end_date = today - timedelta(days=1)
         else:
             end_date = today
 
@@ -1589,10 +1450,8 @@ def show_history():
             )
         )
 
-        monday, sunday = (
-            get_week_dates(
-                reference
-            )
+        monday, sunday = get_week_dates(
+            reference
         )
 
         label = (
@@ -1630,10 +1489,7 @@ def show_history():
 
     if monday <= today <= sunday:
         if voting_status() == "open":
-            end_date = (
-                today
-                - timedelta(days=1)
-            )
+            end_date = today - timedelta(days=1)
         else:
             end_date = today
     else:
@@ -1665,10 +1521,7 @@ def show_history():
 # ==================================================
 
 def show_maintenance():
-    if (
-        st.session_state.user_email
-        not in ADMIN_EMAILS
-    ):
+    if st.session_state.user_email not in ADMIN_EMAILS:
         st.error(
             "Acesso não autorizado."
         )
@@ -1683,22 +1536,16 @@ def show_maintenance():
         "Área técnica do Queridômetro"
     )
 
-    participants = (
-        load_participants()
-    )
+    participants = load_participants()
 
     total_participants = len(
         participants
     )
 
     try:
-        participation_today = (
-            get_today_participation_count()
-        )
+        participation_today = get_today_participation_count()
 
-        votes_today = (
-            get_today_votes_count()
-        )
+        votes_today = get_today_votes_count()
 
         database_ok = True
 
@@ -1793,12 +1640,6 @@ def show_maintenance():
         "cada emoji."
     )
 
-    st.caption(
-        "Gerenciamento de participantes "
-        "e diagnóstico técnico serão "
-        "adicionados nas próximas etapas."
-    )
-
 
 # ==================================================
 # LOGIN AUTOMÁTICO
@@ -1824,46 +1665,33 @@ else:
         "submitted",
     }
 
-    if (
-        st.session_state.page
-        not in special_pages
-    ):
+    if st.session_state.page not in special_pages:
         show_navigation()
 
     if st.session_state.page == "home":
-
         show_home()
 
     elif st.session_state.page == "results":
-
         show_results()
 
     elif st.session_state.page == "history":
-
         show_history()
 
     elif st.session_state.page == "profile":
-
         show_profile()
 
     elif st.session_state.page == "maintenance":
-
         show_maintenance()
 
     elif st.session_state.page == "voting":
-
         show_voting()
 
     elif st.session_state.page == "review":
-
         show_review()
 
     elif st.session_state.page == "submitted":
-
         show_submitted()
 
     else:
-
         st.session_state.page = "home"
-
         st.rerun()
