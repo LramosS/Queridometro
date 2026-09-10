@@ -17,7 +17,7 @@ from supabase import create_client
 st.set_page_config(
     page_title="Queridômetro",
     page_icon="🎭",
-    layout="centered"
+    layout="centered",
 )
 
 TIMEZONE = ZoneInfo("America/Sao_Paulo")
@@ -125,7 +125,6 @@ cookie_manager = stx.CookieManager()
 st.markdown(
     """
     <meta name="google" content="notranslate">
-
     <script>
         document.documentElement.lang = "pt-BR";
         document.documentElement.setAttribute("translate", "no");
@@ -174,7 +173,6 @@ def get_week_id(date_value=None):
         date_value = today_br()
 
     iso = date_value.isocalendar()
-
     return f"{iso.year}-W{iso.week:02d}"
 
 
@@ -213,6 +211,24 @@ def voting_status_label():
         return "🟢 Votação aberta"
 
     return "🔒 Votação encerrada"
+
+
+def parse_supabase_datetime(value):
+    if not value:
+        return None
+
+    try:
+        parsed = datetime.fromisoformat(
+            str(value).replace("Z", "+00:00")
+        )
+
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=TIMEZONE)
+
+        return parsed.astimezone(TIMEZONE)
+
+    except Exception:
+        return None
 
 
 # ==================================================
@@ -269,9 +285,7 @@ def set_maintenance_mode(enabled):
                         if enabled
                         else "false"
                     ),
-                    "updated_at": (
-                        now_br().isoformat()
-                    ),
+                    "updated_at": now_br().isoformat(),
                 }
             )
             .eq(
@@ -288,26 +302,20 @@ def set_maintenance_mode(enabled):
             "Não foi possível alterar "
             "o modo de manutenção."
         )
-
         st.code(str(error))
-
         return False
 
 
 def show_maintenance_screen():
-    st.title(
-        "🎭 Queridômetro"
-    )
+    st.title("🎭 Queridômetro")
 
     st.warning(
-        "🔧 Estamos fazendo uma "
-        "atualização rápida."
+        "🔧 Estamos fazendo uma atualização rápida."
     )
 
     st.write(
-        "O Queridômetro está "
-        "temporariamente pausado "
-        "para manutenção."
+        "O Queridômetro está temporariamente "
+        "pausado para manutenção."
     )
 
     st.write(
@@ -496,7 +504,6 @@ def get_photo_path():
 
 def save_profile_photo(image):
     photo_bytes = image_to_bytes(image)
-
     photo_path = get_photo_path()
 
     try:
@@ -548,7 +555,6 @@ def save_profile_photo(image):
         )
 
         st.session_state.confirm_remove_photo = False
-
         st.session_state.photo_uploader_version += 1
 
         load_participants.clear()
@@ -559,9 +565,7 @@ def save_profile_photo(image):
         st.error(
             "Não foi possível salvar a foto."
         )
-
         st.code(str(error))
-
         return False
 
 
@@ -602,14 +606,12 @@ def remove_profile_photo():
         st.error(
             "Não foi possível remover a foto."
         )
-
         st.code(str(error))
-
         return False
 
 
 # ==================================================
-# EXIBIÇÃO DE NOMES
+# NOMES
 # ==================================================
 
 def show_name(name, tag="h2"):
@@ -631,63 +633,30 @@ def show_name(name, tag="h2"):
 
 
 # ==================================================
-# MENSAGENS DA VERSÃO
+# CENTRAL DE COMUNICADOS
 # ==================================================
 
-def get_latest_announcement():
+def load_announcements():
     try:
         response = (
             supabase
             .table("app_announcements")
             .select(
                 "id,version,title,message,status,"
-                "published_at,created_at,updated_at"
+                "scheduled_at,published_at,"
+                "created_at,updated_at"
             )
             .order(
                 "created_at",
-                desc=True,
+                desc=False,
             )
-            .limit(1)
             .execute()
         )
 
-        if response.data:
-            return response.data[0]
-
-        return None
+        return response.data or []
 
     except Exception:
-        return None
-
-
-def get_published_announcement():
-    try:
-        response = (
-            supabase
-            .table("app_announcements")
-            .select(
-                "id,version,title,message,"
-                "published_at"
-            )
-            .eq(
-                "status",
-                "published",
-            )
-            .order(
-                "published_at",
-                desc=True,
-            )
-            .limit(1)
-            .execute()
-        )
-
-        if response.data:
-            return response.data[0]
-
-        return None
-
-    except Exception:
-        return None
+        return []
 
 
 def announcement_already_seen(
@@ -750,34 +719,63 @@ def mark_announcement_as_seen(
             "Não foi possível concluir "
             "a leitura da mensagem."
         )
-
         st.code(str(error))
-
         return False
 
 
-def should_show_announcement():
+def announcement_is_available(
+    announcement,
+):
+    status = announcement.get("status")
+
+    if status == "published":
+        return True
+
+    if status == "scheduled":
+        scheduled_at = parse_supabase_datetime(
+            announcement.get("scheduled_at")
+        )
+
+        if (
+            scheduled_at
+            and scheduled_at <= now_br()
+        ):
+            return True
+
+    return False
+
+
+def get_pending_announcement_for_user():
     if not st.session_state.user_id:
         return None
 
-    announcement = (
-        get_published_announcement()
-    )
+    announcements = load_announcements()
 
-    if not announcement:
-        return None
+    for announcement in announcements:
 
-    if announcement_already_seen(
-        announcement["id"]
-    ):
-        return None
+        if not announcement_is_available(
+            announcement
+        ):
+            continue
 
-    return announcement
+        if not announcement_already_seen(
+            announcement["id"]
+        ):
+            return announcement
+
+    return None
 
 
 def show_announcement(
     announcement,
 ):
+    version = announcement.get("version")
+
+    if version:
+        st.caption(
+            f"Versão {version}"
+        )
+
     st.title(
         announcement["title"]
     )
@@ -792,7 +790,10 @@ def show_announcement(
         "Entendi",
         type="primary",
         use_container_width=True,
-        key="announcement_understood",
+        key=(
+            f"announcement_understood_"
+            f"{announcement['id']}"
+        ),
     ):
         if mark_announcement_as_seen(
             announcement["id"]
@@ -830,17 +831,22 @@ def save_announcement_draft(
         (
             supabase
             .table("app_announcements")
-            .upsert(
+            .insert(
                 {
-                    "version": version,
-                    "title": title,
-                    "message": message,
+                    "version": (
+                        version.strip()
+                        if version.strip()
+                        else None
+                    ),
+                    "title": title.strip(),
+                    "message": message.strip(),
                     "status": "draft",
+                    "scheduled_at": None,
+                    "published_at": None,
                     "updated_at": (
                         now_br().isoformat()
                     ),
-                },
-                on_conflict="version",
+                }
             )
             .execute()
         )
@@ -852,9 +858,7 @@ def save_announcement_draft(
             "Não foi possível salvar "
             "o rascunho."
         )
-
         st.code(str(error))
-
         return False
 
 
@@ -867,38 +871,24 @@ def publish_announcement(
         (
             supabase
             .table("app_announcements")
-            .update(
+            .insert(
                 {
-                    "status": "inactive",
-                    "updated_at": (
-                        now_br().isoformat()
+                    "version": (
+                        version.strip()
+                        if version.strip()
+                        else None
                     ),
-                }
-            )
-            .eq(
-                "status",
-                "published",
-            )
-            .execute()
-        )
-
-        (
-            supabase
-            .table("app_announcements")
-            .upsert(
-                {
-                    "version": version,
-                    "title": title,
-                    "message": message,
+                    "title": title.strip(),
+                    "message": message.strip(),
                     "status": "published",
+                    "scheduled_at": None,
                     "published_at": (
                         now_br().isoformat()
                     ),
                     "updated_at": (
                         now_br().isoformat()
                     ),
-                },
-                on_conflict="version",
+                }
             )
             .execute()
         )
@@ -910,9 +900,50 @@ def publish_announcement(
             "Não foi possível publicar "
             "a mensagem."
         )
-
         st.code(str(error))
+        return False
 
+
+def schedule_announcement(
+    version,
+    title,
+    message,
+    scheduled_at,
+):
+    try:
+        (
+            supabase
+            .table("app_announcements")
+            .insert(
+                {
+                    "version": (
+                        version.strip()
+                        if version.strip()
+                        else None
+                    ),
+                    "title": title.strip(),
+                    "message": message.strip(),
+                    "status": "scheduled",
+                    "scheduled_at": (
+                        scheduled_at.isoformat()
+                    ),
+                    "published_at": None,
+                    "updated_at": (
+                        now_br().isoformat()
+                    ),
+                }
+            )
+            .execute()
+        )
+
+        return True
+
+    except Exception as error:
+        st.error(
+            "Não foi possível agendar "
+            "a mensagem."
+        )
+        st.code(str(error))
         return False
 
 
@@ -945,10 +976,19 @@ def deactivate_announcement(
             "Não foi possível desativar "
             "a mensagem."
         )
-
         st.code(str(error))
-
         return False
+
+
+def format_announcement_version(
+    announcement,
+):
+    version = announcement.get("version")
+
+    if version:
+        return f" • versão {version}"
+
+    return ""
 
 
 # ==================================================
@@ -1009,7 +1049,7 @@ def get_today_votes_count():
 
 
 # ==================================================
-# TELA DE LOGIN
+# LOGIN
 # ==================================================
 
 def show_login():
@@ -1047,6 +1087,7 @@ def show_login():
             )
 
         else:
+
             if remember:
                 save_login_cookie(email)
 
@@ -1127,7 +1168,6 @@ def show_navigation():
         st.session_state.page = (
             selected_page
         )
-
         st.rerun()
 
     st.divider()
@@ -1139,10 +1179,7 @@ def show_navigation():
 
 def show_home():
     status = voting_status()
-
-    already_voted = (
-        has_voted_today()
-    )
+    already_voted = has_voted_today()
 
     st.title(
         "🎭 Queridômetro"
@@ -1181,17 +1218,20 @@ def show_home():
     )
 
     if status == "before":
+
         st.info(
             "⏰ A votação de hoje "
             "abre às 09h."
         )
 
     elif status == "open":
+
         st.success(
             "🟢 Votação aberta até 18h."
         )
 
         if already_voted:
+
             st.success(
                 "✅ Você já participou hoje."
             )
@@ -1202,6 +1242,7 @@ def show_home():
             )
 
         else:
+
             total_to_vote = len(
                 get_voting_list()
             )
@@ -1217,15 +1258,14 @@ def show_home():
                 type="primary",
                 use_container_width=True,
             ):
-                st.session_state.page = (
-                    "voting"
-                )
 
+                st.session_state.page = "voting"
                 st.session_state.current_vote_index = 0
 
                 st.rerun()
 
     else:
+
         st.info(
             "🔒 A votação de hoje "
             "foi encerrada."
@@ -1244,7 +1284,7 @@ def show_home():
 
 
 # ==================================================
-# ABA EMOJIS
+# EMOJIS
 # ==================================================
 
 def show_emojis():
@@ -1327,12 +1367,14 @@ def show_profile():
         )
 
         with col2:
+
             st.image(
                 st.session_state.profile_photo_url,
                 width=180,
             )
 
     else:
+
         st.info(
             "Você ainda não adicionou "
             "uma foto."
@@ -1397,9 +1439,11 @@ def show_profile():
             "Salvar foto",
             use_container_width=True,
         ):
+
             if save_profile_photo(
                 cropped_image
             ):
+
                 st.success(
                     "Foto atualizada."
                 )
@@ -1414,10 +1458,8 @@ def show_profile():
                 "Remover foto",
                 use_container_width=True,
             ):
-                st.session_state.confirm_remove_photo = (
-                    True
-                )
 
+                st.session_state.confirm_remove_photo = True
                 st.rerun()
 
         else:
@@ -1438,10 +1480,8 @@ def show_profile():
                     use_container_width=True,
                     key="cancel_remove_photo",
                 ):
-                    st.session_state.confirm_remove_photo = (
-                        False
-                    )
 
+                    st.session_state.confirm_remove_photo = False
                     st.rerun()
 
             with col_confirm:
@@ -1452,6 +1492,7 @@ def show_profile():
                     use_container_width=True,
                     key="confirm_remove_photo_button",
                 ):
+
                     if remove_profile_photo():
                         st.rerun()
 
@@ -1470,23 +1511,17 @@ def show_profile():
 
 def show_voting():
 
-    # ------------------------------------------------
-    # VOLTAR PARA A HOME
-    # ------------------------------------------------
-
     if st.button(
         "← Voltar para início",
         use_container_width=True,
         key="back_to_home_from_voting",
     ):
+
         st.session_state.page = "home"
         st.rerun()
 
-    # ------------------------------------------------
-    # VERIFICAÇÕES
-    # ------------------------------------------------
-
     if voting_status() != "open":
+
         st.warning(
             "A votação não está disponível "
             "neste horário."
@@ -1494,6 +1529,7 @@ def show_voting():
         return
 
     if has_voted_today():
+
         st.warning(
             "Você já enviou "
             "sua votação de hoje."
@@ -1506,15 +1542,12 @@ def show_voting():
     total_people = len(voting_list)
 
     if total_people == 0:
+
         st.info(
             "Não há outros participantes "
             "disponíveis para votação."
         )
         return
-
-    # ------------------------------------------------
-    # PARTICIPANTE ATUAL
-    # ------------------------------------------------
 
     current_index = (
         st.session_state.current_vote_index
@@ -1541,10 +1574,6 @@ def show_voting():
     target_name = target["name"]
     target_photo = target["photo_url"]
 
-    # ------------------------------------------------
-    # CABEÇALHO
-    # ------------------------------------------------
-
     st.title(
         "🎭 Queridômetro"
     )
@@ -1560,10 +1589,6 @@ def show_voting():
         / total_people
     )
 
-    # ------------------------------------------------
-    # FOTO
-    # ------------------------------------------------
-
     if target_photo:
 
         col1, col2, col3 = (
@@ -1571,6 +1596,7 @@ def show_voting():
         )
 
         with col2:
+
             st.image(
                 target_photo,
                 width=150,
@@ -1586,32 +1612,23 @@ def show_voting():
         "com essa pessoa hoje?"
     )
 
-    # ------------------------------------------------
-    # SELEÇÃO DO EMOJI
-    # ------------------------------------------------
-
     def select_vote(emoji):
+
         st.session_state.votes[
             target_email
         ] = emoji
 
-        # Escolher o emoji nunca abre
-        # automaticamente a revisão.
         st.session_state.page = "voting"
-
         st.session_state.confirm_submission = False
 
         st.rerun()
-
-    # ------------------------------------------------
-    # PRIMEIRA LINHA
-    # ------------------------------------------------
 
     col1, col2, col3 = (
         st.columns(3)
     )
 
     with col1:
+
         if st.button(
             "❤️ Coração",
             key=f"vote_{target_email}_heart",
@@ -1620,6 +1637,7 @@ def show_voting():
             select_vote("❤️")
 
     with col2:
+
         if st.button(
             "🌱 Planta",
             key=f"vote_{target_email}_plant",
@@ -1628,6 +1646,7 @@ def show_voting():
             select_vote("🌱")
 
     with col3:
+
         if st.button(
             "🔥 Foguinho",
             key=f"vote_{target_email}_fire",
@@ -1635,15 +1654,12 @@ def show_voting():
         ):
             select_vote("🔥")
 
-    # ------------------------------------------------
-    # SEGUNDA LINHA
-    # ------------------------------------------------
-
     col4, col5, col6 = (
         st.columns(3)
     )
 
     with col4:
+
         if st.button(
             "🐍 Cobrinha",
             key=f"vote_{target_email}_snake",
@@ -1652,6 +1668,7 @@ def show_voting():
             select_vote("🐍")
 
     with col5:
+
         if st.button(
             "🧳 Mala",
             key=f"vote_{target_email}_bag",
@@ -1660,6 +1677,7 @@ def show_voting():
             select_vote("🧳")
 
     with col6:
+
         if st.button(
             "🤝 Parceria",
             key=f"vote_{target_email}_partner",
@@ -1667,15 +1685,12 @@ def show_voting():
         ):
             select_vote("🤝")
 
-    # ------------------------------------------------
-    # TERCEIRA LINHA
-    # ------------------------------------------------
-
     col7, col8 = (
         st.columns(2)
     )
 
     with col7:
+
         if st.button(
             "😐 Não interage",
             key=f"vote_{target_email}_neutral",
@@ -1684,16 +1699,13 @@ def show_voting():
             select_vote("😐")
 
     with col8:
+
         if st.button(
             "🦚 Pavão",
             key=f"vote_{target_email}_peacock",
             use_container_width=True,
         ):
             select_vote("🦚")
-
-    # ------------------------------------------------
-    # VOTO SELECIONADO
-    # ------------------------------------------------
 
     selected_vote = (
         st.session_state.votes.get(
@@ -1718,10 +1730,6 @@ def show_voting():
 
     st.divider()
 
-    # ------------------------------------------------
-    # NAVEGAÇÃO ENTRE PESSOAS
-    # ------------------------------------------------
-
     col_back, col_next = (
         st.columns(2)
     )
@@ -1738,7 +1746,6 @@ def show_voting():
         ):
 
             st.session_state.current_vote_index -= 1
-
             st.session_state.page = "voting"
 
             st.rerun()
@@ -1762,7 +1769,6 @@ def show_voting():
             ):
 
                 st.session_state.current_vote_index += 1
-
                 st.session_state.page = "voting"
 
                 st.rerun()
@@ -1779,17 +1785,10 @@ def show_voting():
                 key="open_vote_review",
             ):
 
-                # SOMENTE este botão
-                # abre a revisão.
                 st.session_state.page = "review"
-
                 st.session_state.confirm_submission = False
 
                 st.rerun()
-
-    # ------------------------------------------------
-    # CONTADOR
-    # ------------------------------------------------
 
     answered = sum(
         1
@@ -1820,10 +1819,6 @@ def show_review():
         if email in st.session_state.votes
     )
 
-    # ------------------------------------------------
-    # CABEÇALHO
-    # ------------------------------------------------
-
     st.title(
         "Revisar votação"
     )
@@ -1836,18 +1831,12 @@ def show_review():
 
     st.divider()
 
-    # ------------------------------------------------
-    # LISTA DAS RESPOSTAS
-    # ------------------------------------------------
-
     for index, email in enumerate(
         voting_list,
         start=1,
     ):
 
-        name = (
-            participants[email]["name"]
-        )
+        name = participants[email]["name"]
 
         vote = (
             st.session_state.votes.get(
@@ -1861,9 +1850,7 @@ def show_review():
 
         with col_info:
 
-            safe_name = html.escape(
-                name
-            )
+            safe_name = html.escape(name)
 
             if vote:
 
@@ -1910,10 +1897,6 @@ def show_review():
                 unsafe_allow_html=True,
             )
 
-        # ------------------------------------------------
-        # EDITAR RESPOSTA
-        # ------------------------------------------------
-
         with col_edit:
 
             if st.button(
@@ -1928,21 +1911,12 @@ def show_review():
                     )
                 )
 
-                st.session_state.page = (
-                    "voting"
-                )
-
-                st.session_state.confirm_submission = (
-                    False
-                )
+                st.session_state.page = "voting"
+                st.session_state.confirm_submission = False
 
                 st.rerun()
 
         st.divider()
-
-    # ------------------------------------------------
-    # PENDÊNCIAS
-    # ------------------------------------------------
 
     if answered < total_people:
 
@@ -1958,30 +1932,19 @@ def show_review():
 
             for email in voting_list:
 
-                if (
-                    email
-                    not in st.session_state.votes
-                ):
+                if email not in st.session_state.votes:
 
                     st.session_state.current_vote_index = (
                         voting_list.index(
                             email
                         )
                     )
-
                     break
 
-            st.session_state.page = (
-                "voting"
-            )
-
+            st.session_state.page = "voting"
             st.rerun()
 
         return
-
-    # ------------------------------------------------
-    # ENVIAR VOTAÇÃO
-    # ------------------------------------------------
 
     if not st.session_state.confirm_submission:
 
@@ -1992,10 +1955,7 @@ def show_review():
             key="start_submission",
         ):
 
-            st.session_state.confirm_submission = (
-                True
-            )
-
+            st.session_state.confirm_submission = True
             st.rerun()
 
     else:
@@ -2017,10 +1977,7 @@ def show_review():
                 key="cancel_submission",
             ):
 
-                st.session_state.confirm_submission = (
-                    False
-                )
-
+                st.session_state.confirm_submission = False
                 st.rerun()
 
         with col_confirm:
@@ -2041,17 +1998,10 @@ def show_review():
 
 def submit_votes():
 
-    participants = (
-        load_participants()
-    )
+    participants = load_participants()
+    voting_list = get_voting_list()
 
-    voting_list = (
-        get_voting_list()
-    )
-
-    date_value = (
-        today_br()
-    )
+    date_value = today_br()
 
     vote_rows = []
 
@@ -2068,7 +2018,6 @@ def submit_votes():
             st.error(
                 "Existem respostas pendentes."
             )
-
             return
 
         vote_rows.append(
@@ -2115,13 +2064,8 @@ def submit_votes():
             .execute()
         )
 
-        st.session_state.confirm_submission = (
-            False
-        )
-
-        st.session_state.page = (
-            "submitted"
-        )
+        st.session_state.confirm_submission = False
+        st.session_state.page = "submitted"
 
         st.rerun()
 
@@ -2167,10 +2111,7 @@ def show_submitted():
     ):
 
         st.session_state.votes = {}
-
-        st.session_state.page = (
-            "home"
-        )
+        st.session_state.page = "home"
 
         st.rerun()
 
@@ -2184,9 +2125,7 @@ def get_results(
     end_date,
 ):
 
-    participants = (
-        load_participants()
-    )
+    participants = load_participants()
 
     response = (
         supabase
@@ -2212,12 +2151,8 @@ def get_results(
         results[
             participant["id"]
         ] = {
-            "name": (
-                participant["name"]
-            ),
-            "photo_url": (
-                participant["photo_url"]
-            ),
+            "name": participant["name"],
+            "photo_url": participant["photo_url"],
             "counts": {
                 emoji: 0
                 for emoji in COUNTED_EMOJIS
@@ -2226,13 +2161,8 @@ def get_results(
 
     for vote in response.data:
 
-        recipient_id = (
-            vote["recipient_id"]
-        )
-
-        emoji = (
-            vote["emoji"]
-        )
+        recipient_id = vote["recipient_id"]
+        emoji = vote["emoji"]
 
         if (
             recipient_id in results
@@ -2265,9 +2195,7 @@ def show_result_card(
                 width=110,
             )
 
-    safe_name = html.escape(
-        name
-    )
+    safe_name = html.escape(name)
 
     result_name_html = (
         '<div '
@@ -2357,12 +2285,9 @@ def show_results():
                 "O resultado de hoje "
                 "será liberado depois das 18h."
             )
-
             return
 
-        date_value = (
-            today_br()
-        )
+        date_value = today_br()
 
         st.caption(
             date_value.strftime(
@@ -2377,20 +2302,16 @@ def show_results():
 
     else:
 
-        today = (
-            today_br()
-        )
+        today = today_br()
 
         monday, sunday = (
             get_week_dates(today)
         )
 
         if voting_status() == "closed":
-
             end_date = today
 
         else:
-
             end_date = (
                 today
                 - timedelta(days=1)
@@ -2408,7 +2329,6 @@ def show_results():
                 "Ainda não há resultados "
                 "encerrados nesta semana."
             )
-
             return
 
         results = get_results(
@@ -2435,9 +2355,7 @@ def show_history():
         "🗓️ Histórico"
     )
 
-    today = (
-        today_br()
-    )
+    today = today_br()
 
     weeks = []
 
@@ -2492,18 +2410,15 @@ def show_history():
     if monday <= today <= sunday:
 
         if voting_status() == "closed":
-
             end_date = today
 
         else:
-
             end_date = (
                 today
                 - timedelta(days=1)
             )
 
     else:
-
         end_date = sunday
 
     if end_date < monday:
@@ -2512,7 +2427,6 @@ def show_history():
             "Ainda não há resultados "
             "encerrados nesta semana."
         )
-
         return
 
     results = get_results(
@@ -2540,7 +2454,6 @@ def show_maintenance():
         st.error(
             "Acesso não autorizado."
         )
-
         return
 
     st.title(
@@ -2585,7 +2498,6 @@ def show_maintenance():
                 st.success(
                     "App reativado."
                 )
-
                 st.rerun()
 
     else:
@@ -2609,91 +2521,95 @@ def show_maintenance():
                 st.success(
                     "App pausado."
                 )
-
                 st.rerun()
 
     # ==================================================
-    # CENTRAL DE MENSAGENS
+    # CENTRAL DE COMUNICADOS
     # ==================================================
 
     st.divider()
 
     st.subheader(
-        "📣 Mensagem da versão"
+        "📣 Comunicados"
     )
 
     st.caption(
-        "Escreva uma mensagem para avisar "
-        "os participantes sobre novidades "
-        "e atualizações."
+        "Publique agora ou programe comunicados "
+        "para todos os participantes."
     )
 
-    latest_announcement = (
-        get_latest_announcement()
+    announcement_title = st.text_input(
+        "Título",
+        placeholder=(
+            "Ex.: 🎭 O Queridômetro "
+            "tem novidades!"
+        ),
+        key="new_announcement_title",
     )
 
-    default_version = ""
-    default_title = ""
-    default_message = ""
+    announcement_message = st.text_area(
+        "Mensagem",
+        height=240,
+        placeholder=(
+            "Escreva aqui o comunicado."
+        ),
+        key="new_announcement_message",
+    )
 
-    if latest_announcement:
+    announcement_version = st.text_input(
+        "Versão do app (opcional)",
+        placeholder="Ex.: 1.2",
+        key="new_announcement_version",
+    )
 
-        default_version = (
-            latest_announcement.get(
-                "version"
+    publication_mode = st.radio(
+        "Publicação",
+        [
+            "Publicar agora",
+            "Agendar",
+        ],
+        horizontal=True,
+        key="announcement_publication_mode",
+    )
+
+    scheduled_datetime = None
+
+    if publication_mode == "Agendar":
+
+        col_date, col_time = (
+            st.columns(2)
+        )
+
+        with col_date:
+
+            scheduled_date = st.date_input(
+                "Data",
+                value=(
+                    today_br()
+                    + timedelta(days=1)
+                ),
+                key="announcement_date",
             )
-            or ""
-        )
 
-        default_title = (
-            latest_announcement.get(
-                "title"
+        with col_time:
+
+            scheduled_time = st.time_input(
+                "Hora",
+                value=time(9, 0),
+                key="announcement_time",
             )
-            or ""
+
+        scheduled_datetime = datetime.combine(
+            scheduled_date,
+            scheduled_time,
+            tzinfo=TIMEZONE,
         )
 
-        default_message = (
-            latest_announcement.get(
-                "message"
-            )
-            or ""
+        st.caption(
+            "Horário de Brasília / São Paulo."
         )
 
-    announcement_version = (
-        st.text_input(
-            "Versão",
-            value=default_version,
-            placeholder="Ex.: 1.1",
-            key="announcement_version",
-        )
-    )
-
-    announcement_title = (
-        st.text_input(
-            "Título",
-            value=default_title,
-            placeholder=(
-                "🎭 O Queridômetro voltou "
-                "com novidades!"
-            ),
-            key="announcement_title",
-        )
-    )
-
-    announcement_message = (
-        st.text_area(
-            "Mensagem",
-            value=default_message,
-            height=300,
-            placeholder=(
-                "Escreva aqui as novidades "
-                "da versão."
-            ),
-            key="announcement_message",
-        )
-    )
-
-    col_draft, col_publish = (
+    col_draft, col_action = (
         st.columns(2)
     )
 
@@ -2702,30 +2618,17 @@ def show_maintenance():
         if st.button(
             "Salvar rascunho",
             use_container_width=True,
-            key="save_announcement_draft",
+            key="save_new_announcement_draft",
         ):
 
-            version = (
-                announcement_version.strip()
-            )
+            title = announcement_title.strip()
+            message = announcement_message.strip()
+            version = announcement_version.strip()
 
-            title = (
-                announcement_title.strip()
-            )
-
-            message = (
-                announcement_message.strip()
-            )
-
-            if (
-                not version
-                or not title
-                or not message
-            ):
+            if not title or not message:
 
                 st.warning(
-                    "Preencha versão, título "
-                    "e mensagem."
+                    "Preencha título e mensagem."
                 )
 
             else:
@@ -2742,37 +2645,54 @@ def show_maintenance():
 
                     st.rerun()
 
-    with col_publish:
+    with col_action:
+
+        action_label = (
+            "Publicar mensagem"
+            if publication_mode == "Publicar agora"
+            else "Agendar mensagem"
+        )
 
         if st.button(
-            "Publicar mensagem",
+            action_label,
             type="primary",
             use_container_width=True,
-            key="publish_announcement",
+            key="publish_or_schedule_announcement",
         ):
 
-            version = (
-                announcement_version.strip()
-            )
+            title = announcement_title.strip()
+            message = announcement_message.strip()
+            version = announcement_version.strip()
 
-            title = (
-                announcement_title.strip()
-            )
-
-            message = (
-                announcement_message.strip()
-            )
-
-            if (
-                not version
-                or not title
-                or not message
-            ):
+            if not title or not message:
 
                 st.warning(
-                    "Preencha versão, título "
-                    "e mensagem."
+                    "Preencha título e mensagem."
                 )
+
+            elif publication_mode == "Agendar":
+
+                if (
+                    scheduled_datetime
+                    <= now_br()
+                ):
+
+                    st.warning(
+                        "Escolha uma data e hora futuras."
+                    )
+
+                elif schedule_announcement(
+                    version,
+                    title,
+                    message,
+                    scheduled_datetime,
+                ):
+
+                    st.success(
+                        "Mensagem agendada."
+                    )
+
+                    st.rerun()
 
             else:
 
@@ -2788,81 +2708,232 @@ def show_maintenance():
 
                     st.rerun()
 
-    latest_announcement = (
-        get_latest_announcement()
-    )
+    # ==================================================
+    # LISTAGEM DE COMUNICADOS
+    # ==================================================
 
-    if latest_announcement:
+    announcements = load_announcements()
 
-        st.write("")
+    published = []
+    scheduled = []
+    drafts = []
 
-        status = (
-            latest_announcement[
-                "status"
-            ]
-        )
+    for announcement in announcements:
 
-        version = (
-            latest_announcement[
-                "version"
-            ]
-        )
+        status = announcement.get("status")
 
-        if status == "published":
-
-            st.success(
-                f"🟢 Versão {version} publicada"
+        if status == "draft":
+            drafts.append(
+                announcement
             )
 
-            views = (
-                get_announcement_view_count(
-                    latest_announcement["id"]
+        elif status == "scheduled":
+
+            scheduled_at = parse_supabase_datetime(
+                announcement.get(
+                    "scheduled_at"
                 )
             )
 
-            total = len(
-                load_participants()
+            if (
+                scheduled_at
+                and scheduled_at <= now_br()
+            ):
+                published.append(
+                    announcement
+                )
+
+            else:
+                scheduled.append(
+                    announcement
+                )
+
+        elif status == "published":
+            published.append(
+                announcement
             )
 
-            st.caption(
-                f"Visualizada por "
-                f"{views} de {total} participantes."
+    st.divider()
+
+    st.subheader(
+        "🟢 Em exibição"
+    )
+
+    if not published:
+
+        st.caption(
+            "Nenhum comunicado em exibição."
+        )
+
+    for announcement in published:
+
+        version_text = (
+            format_announcement_version(
+                announcement
+            )
+        )
+
+        st.markdown(
+            f"**{announcement['title']}**"
+            f"{version_text}"
+        )
+
+        views = (
+            get_announcement_view_count(
+                announcement["id"]
+            )
+        )
+
+        total = len(
+            load_participants()
+        )
+
+        if announcement.get("status") == "scheduled":
+
+            scheduled_at = parse_supabase_datetime(
+                announcement.get(
+                    "scheduled_at"
+                )
             )
 
-            if st.button(
-                "Desativar mensagem",
-                use_container_width=True,
-                key="deactivate_announcement",
+            if scheduled_at:
+
+                st.caption(
+                    "Publicação automática: "
+                    f"{scheduled_at.strftime('%d/%m/%Y às %H:%M')}"
+                )
+
+        st.caption(
+            f"Visualizada por "
+            f"{views} de {total} participantes."
+        )
+
+        if st.button(
+            "Desativar",
+            key=(
+                f"deactivate_"
+                f"{announcement['id']}"
+            ),
+            use_container_width=True,
+        ):
+
+            if deactivate_announcement(
+                announcement["id"]
             ):
 
-                if deactivate_announcement(
-                    latest_announcement["id"]
-                ):
+                st.success(
+                    "Mensagem desativada."
+                )
+                st.rerun()
 
-                    st.success(
-                        "Mensagem desativada."
-                    )
+        st.divider()
 
-                    st.rerun()
+    st.subheader(
+        "🕒 Agendadas"
+    )
 
-        elif status == "draft":
+    if not scheduled:
 
-            st.info(
-                f"📝 Versão {version} "
-                f"salva como rascunho"
+        st.caption(
+            "Nenhuma mensagem agendada."
+        )
+
+    for announcement in scheduled:
+
+        version_text = (
+            format_announcement_version(
+                announcement
             )
+        )
 
-        else:
+        st.markdown(
+            f"**{announcement['title']}**"
+            f"{version_text}"
+        )
+
+        scheduled_at = parse_supabase_datetime(
+            announcement.get(
+                "scheduled_at"
+            )
+        )
+
+        if scheduled_at:
 
             st.caption(
-                f"⚪ Versão {version} inativa"
+                f"{scheduled_at.strftime('%d/%m/%Y às %H:%M')}"
             )
+
+        if st.button(
+            "Cancelar agendamento",
+            key=(
+                f"cancel_schedule_"
+                f"{announcement['id']}"
+            ),
+            use_container_width=True,
+        ):
+
+            if deactivate_announcement(
+                announcement["id"]
+            ):
+
+                st.success(
+                    "Agendamento cancelado."
+                )
+                st.rerun()
+
+        st.divider()
+
+    st.subheader(
+        "📝 Rascunhos"
+    )
+
+    if not drafts:
+
+        st.caption(
+            "Nenhum rascunho salvo."
+        )
+
+    for announcement in drafts:
+
+        version_text = (
+            format_announcement_version(
+                announcement
+            )
+        )
+
+        st.markdown(
+            f"**{announcement['title']}**"
+            f"{version_text}"
+        )
+
+        st.caption(
+            "Rascunho não visível "
+            "aos participantes."
+        )
+
+        if st.button(
+            "Descartar rascunho",
+            key=(
+                f"discard_draft_"
+                f"{announcement['id']}"
+            ),
+            use_container_width=True,
+        ):
+
+            if deactivate_announcement(
+                announcement["id"]
+            ):
+
+                st.success(
+                    "Rascunho descartado."
+                )
+                st.rerun()
+
+        st.divider()
 
     # ==================================================
     # STATUS DA VOTAÇÃO
     # ==================================================
-
-    st.divider()
 
     st.subheader(
         "Status da votação"
@@ -2876,15 +2947,13 @@ def show_maintenance():
         "Janela diária: 09h às 18h"
     )
 
+    st.divider()
+
     # ==================================================
     # PARTICIPAÇÃO
     # ==================================================
 
-    st.divider()
-
-    participants = (
-        load_participants()
-    )
+    participants = load_participants()
 
     total_participants = len(
         participants
@@ -2937,11 +3006,11 @@ def show_maintenance():
             f"de participação"
         )
 
+    st.divider()
+
     # ==================================================
     # PARTICIPANTES
     # ==================================================
-
-    st.divider()
 
     st.subheader(
         "Participantes"
@@ -2952,16 +3021,16 @@ def show_maintenance():
         total_participants,
     )
 
-    # Amanhã entra aqui a gestão:
-    # adicionar participante
-    # desativar participante
-    # reativar participante
+    st.caption(
+        "A gestão de participantes "
+        "será adicionada nesta área."
+    )
+
+    st.divider()
 
     # ==================================================
     # BANCO
     # ==================================================
-
-    st.divider()
 
     st.subheader(
         "Banco de dados"
@@ -3005,7 +3074,7 @@ if st.session_state.user_email is None:
 
 
 # ==================================================
-# CONTROLE PRINCIPAL DO APP
+# CONTROLE PRINCIPAL
 # ==================================================
 
 if st.session_state.user_email is None:
@@ -3018,10 +3087,6 @@ else:
         get_maintenance_mode()
     )
 
-    # ------------------------------------------------
-    # MANUTENÇÃO
-    # ------------------------------------------------
-
     if (
         maintenance_active
         and not is_admin()
@@ -3031,16 +3096,8 @@ else:
 
     else:
 
-        # ------------------------------------------------
-        # MENSAGEM DA VERSÃO
-        # ------------------------------------------------
-        # Antes de abrir o restante do app,
-        # verifica se existe mensagem publicada
-        # ainda não vista por este participante.
-        # ------------------------------------------------
-
         announcement = (
-            should_show_announcement()
+            get_pending_announcement_for_user()
         )
 
         if announcement:
@@ -3050,10 +3107,6 @@ else:
             )
 
         else:
-
-            # ------------------------------------------------
-            # NAVEGAÇÃO
-            # ------------------------------------------------
 
             special_pages = {
                 "voting",
@@ -3067,10 +3120,6 @@ else:
             ):
 
                 show_navigation()
-
-            # ------------------------------------------------
-            # ROTAS
-            # ------------------------------------------------
 
             if st.session_state.page == "home":
 
@@ -3111,5 +3160,4 @@ else:
             else:
 
                 st.session_state.page = "home"
-
                 st.rerun()
