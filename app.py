@@ -34,6 +34,14 @@ ADMIN_EMAILS = {
     "lucasramoseconomia@gmail.com"
 }
 
+# ==================================================
+# MODO DE TESTE VISUAL DO MATCH 🔥
+# ==================================================
+# ATENÇÃO: mantenha True apenas no teste local.
+# Antes de publicar, altere para False.
+FIRE_TEST_MODE = False
+FIRE_TEST_MATCH_NAME = "Andressa"
+
 
 # ==================================================
 # EMOJIS
@@ -135,6 +143,20 @@ supabase = create_client(
 )
 
 
+def get_auth_client():
+    """
+    Cria um cliente Supabase isolado por sessão do Streamlit.
+    Esse cliente é usado exclusivamente para autenticação.
+    """
+    if "auth_client" not in st.session_state:
+        st.session_state.auth_client = create_client(
+            st.secrets["SUPABASE_URL"],
+            st.secrets["SUPABASE_KEY"],
+        )
+
+    return st.session_state.auth_client
+
+
 # ==================================================
 # COOKIE
 # ==================================================
@@ -167,6 +189,10 @@ DEFAULT_SESSION = {
     "user_id": None,
     "user_name": None,
     "profile_photo_url": None,
+    "auth_email": None,
+    "auth_otp_sent": False,
+    "auth_access_token": None,
+    "auth_refresh_token": None,
     "page": "home",
     "votes": {},
     "current_vote_index": 0,
@@ -393,6 +419,284 @@ def load_participants():
     return participants
 
 
+def ensure_authenticated_client():
+    """
+    Reassocia o cliente Supabase isolado à sessão autenticada
+    do usuário atual e atualiza os tokens caso haja renovação.
+    """
+    access_token = st.session_state.get("auth_access_token")
+    refresh_token = st.session_state.get("auth_refresh_token")
+
+    if not access_token or not refresh_token:
+        return None
+
+    auth_client = get_auth_client()
+
+    try:
+        auth_response = auth_client.auth.set_session(
+            access_token,
+            refresh_token,
+        )
+
+        session = getattr(auth_response, "session", None)
+
+        if session:
+            st.session_state.auth_access_token = session.access_token
+            st.session_state.auth_refresh_token = session.refresh_token
+
+        return auth_client
+
+    except Exception:
+        return None
+
+
+def get_pending_fire_matches():
+    """
+    Consulta somente os matches do usuário autenticado que ainda
+    não foram confirmados. O próprio RPC limita a janela a 18h-19h.
+    """
+    auth_client = ensure_authenticated_client()
+
+    if auth_client is None:
+        return []
+
+    try:
+        response = (
+            auth_client
+            .rpc("get_my_pending_fire_matches")
+            .execute()
+        )
+
+        matches = []
+
+        for row in (response.data or []):
+            participant_id = row.get("matched_participant_id")
+
+            if participant_id:
+                matches.append(str(participant_id))
+
+        return matches
+
+    except Exception:
+        # A surpresa nunca deve derrubar o restante do app.
+        return []
+
+
+def get_participant_name_by_id(participant_id):
+    participants = load_participants()
+
+    for participant in participants.values():
+        if str(participant["id"]) == str(participant_id):
+            return participant["name"]
+
+    return None
+
+
+def acknowledge_fire_match(matched_participant_id):
+    auth_client = ensure_authenticated_client()
+
+    if auth_client is None:
+        return False
+
+    try:
+        response = (
+            auth_client
+            .rpc(
+                "ack_my_fire_match",
+                {
+                    "p_matched_participant_id": (
+                        matched_participant_id
+                    )
+                },
+            )
+            .execute()
+        )
+
+        return bool(response.data)
+
+    except Exception:
+        return False
+
+
+def show_fire_match_surprise(matched_participant_id):
+    matched_name = get_participant_name_by_id(
+        matched_participant_id
+    )
+
+    if not matched_name:
+        return False
+
+    safe_name = html.escape(matched_name)
+
+    st.title("🔥 Deu match!")
+
+    st.markdown(
+        (
+            '<div style="'
+            'padding:22px 18px;'
+            'border-radius:16px;'
+            'background-color:rgba(255,99,71,0.12);'
+            'text-align:center;'
+            'margin:12px 0 18px 0;'
+            '">'
+            '<div style="font-size:42px;margin-bottom:8px;">🔥</div>'
+            '<div style="font-size:18px;line-height:1.5;">'
+            'Você e <strong>'
+            f'{safe_name}'
+            '</strong> trocaram Foguinho hoje.'
+            '</div>'
+            '</div>'
+        ),
+        unsafe_allow_html=True,
+    )
+
+    st.write(
+        "Vocês tiveram algo em comum. 👀 "
+        "O Queridômetro só mostra matches recíprocos."
+    )
+
+    st.caption(
+        "Essa surpresa fica disponível apenas entre 18h e 19h "
+        "e não entra no histórico."
+    )
+
+    if st.button(
+        "Entendi 🔥",
+        type="primary",
+        use_container_width=True,
+        key=f"ack_fire_{matched_participant_id}",
+    ):
+        if acknowledge_fire_match(matched_participant_id):
+            st.rerun()
+        else:
+            st.error(
+                "Não foi possível concluir a visualização agora. "
+                "Tente novamente."
+            )
+
+    return True
+
+
+def show_fire_match_test_preview():
+    """
+    Prévia visual local do match.
+
+    Não consulta nem grava nada no Supabase e só aparece para
+    administradores quando FIRE_TEST_MODE = True. Serve apenas
+    para validar a experiência visual antes da publicação.
+    """
+    safe_name = html.escape(FIRE_TEST_MATCH_NAME)
+
+    st.caption("🧪 MODO DE TESTE LOCAL")
+    st.title("🔥 Deu match!")
+
+    st.markdown(
+        (
+            '<div style="'
+            'padding:22px 18px;'
+            'border-radius:16px;'
+            'background-color:rgba(255,99,71,0.12);'
+            'text-align:center;'
+            'margin:12px 0 18px 0;'
+            '">'
+            '<div style="font-size:42px;margin-bottom:8px;">🔥</div>'
+            '<div style="font-size:18px;line-height:1.5;">'
+            'Você e <strong>'
+            f'{safe_name}'
+            '</strong> trocaram Foguinho hoje.'
+            '</div>'
+            '</div>'
+        ),
+        unsafe_allow_html=True,
+    )
+
+    st.write(
+        "Vocês tiveram algo em comum. 👀 "
+        "O Queridômetro só mostra matches recíprocos."
+    )
+
+    st.caption(
+        "Na versão real, esta surpresa fica disponível apenas "
+        "entre 18h e 19h e não entra no histórico."
+    )
+
+    if st.button(
+        "Entendi 🔥",
+        type="primary",
+        use_container_width=True,
+        key="ack_fire_test_preview",
+    ):
+        st.session_state.fire_test_preview_dismissed = True
+        st.rerun()
+
+    st.info(
+        "Esta é apenas uma prévia visual local. "
+        "Nenhum match, voto ou recibo foi criado no banco."
+    )
+
+    return True
+
+
+def login_authenticated_user(auth_user):
+    """
+    Vincula o usuário autenticado do Supabase Auth ao participante
+    correspondente por auth_user_id.
+    """
+    if not auth_user:
+        return False
+
+    auth_user_id = str(auth_user.id)
+    auth_client = get_auth_client()
+
+    try:
+        response = (
+            auth_client
+            .table("participants")
+            .select(
+                "id,name,email,photo_url,active,auth_user_id"
+            )
+            .eq(
+                "auth_user_id",
+                auth_user_id,
+            )
+            .eq(
+                "active",
+                True,
+            )
+            .limit(1)
+            .execute()
+        )
+
+        if not response.data:
+            return False
+
+        participant = response.data[0]
+
+        st.session_state.user_email = (
+            participant["email"]
+            .strip()
+            .lower()
+        )
+        st.session_state.user_id = participant["id"]
+        st.session_state.user_name = participant["name"]
+        st.session_state.profile_photo_url = (
+            participant["photo_url"]
+        )
+
+        st.session_state.page = "home"
+        st.session_state.current_vote_index = 0
+
+        return True
+
+    except Exception as error:
+        st.error(
+            "Não foi possível localizar "
+            "seu cadastro no Queridômetro."
+        )
+        st.code(str(error))
+        return False
+
+
 def get_voting_list():
     participants = load_participants()
 
@@ -493,10 +797,19 @@ def delete_login_cookie():
 
 
 def logout():
+    try:
+        auth_client = get_auth_client()
+        auth_client.auth.sign_out()
+    except Exception:
+        pass
+
     delete_login_cookie()
 
     for key, value in DEFAULT_SESSION.items():
         st.session_state[key] = value
+
+    if "auth_client" in st.session_state:
+        del st.session_state["auth_client"]
 
     st.rerun()
 
@@ -1118,40 +1431,200 @@ def show_login():
         "Bem-vinde ao Queridômetro"
     )
 
-    email = st.text_input(
-        "Digite seu e-mail",
-        placeholder="nome@email.com",
-    )
+    auth_client = get_auth_client()
 
-    remember = st.checkbox(
-        "Lembrar neste dispositivo"
-    )
+    # ==================================================
+    # ETAPA 1: E-MAIL
+    # ==================================================
 
-    if st.button(
-        "Entrar",
-        use_container_width=True,
-    ):
-        email = email.strip().lower()
+    if not st.session_state.auth_otp_sent:
 
-        if not email:
-            st.warning(
-                "Digite seu e-mail para continuar."
+        email = st.text_input(
+            "Digite seu e-mail",
+            placeholder="nome@email.com",
+            key="auth_login_email",
+        )
+
+        if st.button(
+            "Receber código",
+            type="primary",
+            use_container_width=True,
+        ):
+
+            email = (
+                email
+                .strip()
+                .lower()
             )
 
-        elif not login_user(email):
-            st.error(
-                "Este e-mail não está cadastrado."
-            )
+            if not email:
+                st.warning(
+                    "Digite seu e-mail "
+                    "para continuar."
+                )
+                return
 
-        else:
+            participants = load_participants()
 
-            if remember:
-                save_login_cookie(email)
+            if email not in participants:
+                st.error(
+                    "Este e-mail não está "
+                    "cadastrado no Queridômetro."
+                )
+                return
 
-            else:
-                delete_login_cookie()
+            try:
+                auth_client.auth.sign_in_with_otp(
+                    {
+                        "email": email,
+                        "options": {
+                            "should_create_user": False,
+                        },
+                    }
+                )
 
+                st.session_state.auth_email = email
+                st.session_state.auth_otp_sent = True
+
+                st.success(
+                    "Código enviado para seu e-mail."
+                )
+                st.rerun()
+
+            except Exception as error:
+                st.error(
+                    "Não foi possível enviar "
+                    "o código de acesso."
+                )
+                st.code(str(error))
+
+    # ==================================================
+    # ETAPA 2: CÓDIGO OTP
+    # ==================================================
+
+    else:
+        st.success(
+            "📨 Enviamos um código para:"
+        )
+
+        safe_email = html.escape(
+            st.session_state.auth_email or ""
+        )
+
+        st.markdown(
+            f"**{safe_email}**"
+        )
+
+        otp_code = st.text_input(
+            "Digite o código recebido",
+            placeholder="Digite o código recebido por e-mail",
+            max_chars=8,
+            key="auth_otp_code",
+        )
+
+        if st.button(
+            "Entrar",
+            type="primary",
+            use_container_width=True,
+        ):
+
+            otp_code = otp_code.strip()
+
+            if not otp_code:
+                st.warning(
+                    "Digite o código recebido."
+                )
+                return
+
+            try:
+                response = (
+                    auth_client
+                    .auth
+                    .verify_otp(
+                        {
+                            "email": (
+                                st.session_state.auth_email
+                            ),
+                            "token": otp_code,
+                            "type": "email",
+                        }
+                    )
+                )
+
+                if (
+                    not response
+                    or not response.user
+                    or not response.session
+                ):
+                    st.error(
+                        "Não foi possível validar "
+                        "o código."
+                    )
+                    return
+
+                st.session_state.auth_access_token = (
+                    response.session.access_token
+                )
+                st.session_state.auth_refresh_token = (
+                    response.session.refresh_token
+                )
+
+                if not login_authenticated_user(
+                    response.user
+                ):
+                    st.error(
+                        "Usuário autenticado, "
+                        "mas sem participante vinculado."
+                    )
+                    return
+
+                st.session_state.auth_otp_sent = False
+                st.session_state.auth_email = None
+
+                st.rerun()
+
+            except Exception as error:
+                st.error(
+                    "Código inválido ou expirado."
+                )
+                st.code(str(error))
+
+        st.divider()
+
+        if st.button(
+            "← Usar outro e-mail",
+            use_container_width=True,
+        ):
+            st.session_state.auth_email = None
+            st.session_state.auth_otp_sent = False
             st.rerun()
+
+        if st.button(
+            "Reenviar código",
+            use_container_width=True,
+        ):
+            try:
+                auth_client.auth.sign_in_with_otp(
+                    {
+                        "email": (
+                            st.session_state.auth_email
+                        ),
+                        "options": {
+                            "should_create_user": False,
+                        },
+                    }
+                )
+
+                st.success(
+                    "Novo código enviado."
+                )
+
+            except Exception as error:
+                st.error(
+                    "Não foi possível reenviar "
+                    "o código."
+                )
+                st.code(str(error))
 
 
 # ==================================================
@@ -2075,16 +2548,16 @@ def submit_votes():
     participants = load_participants()
     voting_list = get_voting_list()
 
-    date_value = today_br()
+    # ==============================================
+    # MONTA O PACOTE FINAL DE VOTOS
+    # ==============================================
 
-    vote_rows = []
+    votes_payload = []
 
     for email in voting_list:
 
-        emoji = (
-            st.session_state.votes.get(
-                email
-            )
+        emoji = st.session_state.votes.get(
+            email
         )
 
         if emoji is None:
@@ -2094,16 +2567,8 @@ def submit_votes():
             )
             return
 
-        vote_rows.append(
+        votes_payload.append(
             {
-                "vote_date": (
-                    date_value.isoformat()
-                ),
-                "week_id": (
-                    get_week_id(
-                        date_value
-                    )
-                ),
                 "recipient_id": (
                     participants[email]["id"]
                 ),
@@ -2111,32 +2576,63 @@ def submit_votes():
             }
         )
 
+    # ==============================================
+    # PRECISA ESTAR AUTENTICADO
+    # ==============================================
+
+    if not st.session_state.get(
+        "auth_access_token"
+    ):
+
+        st.error(
+            "Sua sessão de acesso não está válida. "
+            "Entre novamente no Queridômetro."
+        )
+        return
+
+    if not st.session_state.get(
+        "auth_refresh_token"
+    ):
+
+        st.error(
+            "Sua sessão de acesso precisa ser renovada. "
+            "Entre novamente no Queridômetro."
+        )
+        return
+
     try:
 
-        if vote_rows:
+        # ==============================================
+        # CLIENTE AUTH DA PRÓPRIA SESSÃO
+        # ==============================================
 
-            (
-                supabase
-                .table("votes")
-                .insert(vote_rows)
-                .execute()
+        auth_client = ensure_authenticated_client()
+
+        if auth_client is None:
+            st.error(
+                "Sua sessão expirou. "
+                "Entre novamente no Queridômetro."
             )
+            return
 
-        (
-            supabase
-            .table("daily_participation")
-            .insert(
+        # ==============================================
+        # ENVIO ATÔMICO PARA O SUPABASE
+        # ==============================================
+
+        response = (
+            auth_client
+            .rpc(
+                "submit_my_daily_votes",
                 {
-                    "participant_id": (
-                        st.session_state.user_id
-                    ),
-                    "vote_date": (
-                        date_value.isoformat()
-                    ),
-                }
+                    "p_votes": votes_payload
+                },
             )
             .execute()
         )
+
+        # ==============================================
+        # SUCESSO
+        # ==============================================
 
         st.session_state.confirm_submission = False
         st.session_state.page = "submitted"
@@ -2145,16 +2641,40 @@ def submit_votes():
 
     except Exception as error:
 
-        st.error(
-            "Não foi possível enviar "
-            "a votação."
-        )
+        error_text = str(error)
+        error_lower = error_text.lower()
 
-        st.code(
-            str(error)
-        )
+        if "já concluiu a votação" in error_lower:
 
+            st.warning(
+                "Você já concluiu "
+                "a votação de hoje."
+            )
 
+        elif "somente entre 09h e 18h" in error_lower:
+
+            st.warning(
+                "A votação está disponível "
+                "somente entre 09h e 18h."
+            )
+
+        elif "usuário não autenticado" in error_lower:
+
+            st.error(
+                "Sua sessão expirou. "
+                "Entre novamente no Queridômetro."
+            )
+
+        else:
+
+            st.error(
+                "Não foi possível enviar "
+                "a votação."
+            )
+
+            st.code(
+                error_text
+            )
 # ==================================================
 # ENVIO CONCLUÍDO
 # ==================================================
@@ -3340,8 +3860,9 @@ def show_maintenance():
 # LOGIN AUTOMÁTICO
 # ==================================================
 
-if st.session_state.user_email is None:
-    try_cookie_login()
+# Login automático antigo por cookie desativado durante
+# a migração para Supabase Auth.
+# A identidade agora precisa ser confirmada por OTP.
 
 
 # ==================================================
@@ -3367,68 +3888,95 @@ else:
 
     else:
 
-        announcement = (
-            get_pending_announcement_for_user()
+        show_test_fire = (
+            FIRE_TEST_MODE
+            and is_admin()
+            and not st.session_state.get(
+                "fire_test_preview_dismissed",
+                False,
+            )
         )
 
-        if announcement:
+        if show_test_fire:
 
-            show_announcement(
-                announcement
-            )
+            show_fire_match_test_preview()
 
         else:
 
-            special_pages = {
-                "voting",
-                "review",
-                "submitted",
-            }
+            pending_fire_matches = (
+                get_pending_fire_matches()
+            )
 
-            if (
-                st.session_state.page
-                not in special_pages
-            ):
+            if pending_fire_matches:
 
-                show_navigation()
-
-            if st.session_state.page == "home":
-
-                show_home()
-
-            elif st.session_state.page == "results":
-
-                show_results()
-
-            elif st.session_state.page == "history":
-
-                show_history()
-
-            elif st.session_state.page == "emojis":
-
-                show_emojis()
-
-            elif st.session_state.page == "profile":
-
-                show_profile()
-
-            elif st.session_state.page == "maintenance":
-
-                show_maintenance()
-
-            elif st.session_state.page == "voting":
-
-                show_voting()
-
-            elif st.session_state.page == "review":
-
-                show_review()
-
-            elif st.session_state.page == "submitted":
-
-                show_submitted()
+                show_fire_match_surprise(
+                    pending_fire_matches[0]
+                )
 
             else:
 
-                st.session_state.page = "home"
-                st.rerun()
+                announcement = (
+                    get_pending_announcement_for_user()
+                )
+
+                if announcement:
+
+                    show_announcement(
+                        announcement
+                    )
+
+                else:
+
+                    special_pages = {
+                        "voting",
+                        "review",
+                        "submitted",
+                    }
+
+                    if (
+                        st.session_state.page
+                        not in special_pages
+                    ):
+
+                        show_navigation()
+
+                    if st.session_state.page == "home":
+
+                        show_home()
+
+                    elif st.session_state.page == "results":
+
+                        show_results()
+
+                    elif st.session_state.page == "history":
+
+                        show_history()
+
+                    elif st.session_state.page == "emojis":
+
+                        show_emojis()
+
+                    elif st.session_state.page == "profile":
+
+                        show_profile()
+
+                    elif st.session_state.page == "maintenance":
+
+                        show_maintenance()
+
+                    elif st.session_state.page == "voting":
+
+                        show_voting()
+
+                    elif st.session_state.page == "review":
+
+                        show_review()
+
+                    elif st.session_state.page == "submitted":
+
+                        show_submitted()
+
+                    else:
+
+                        st.session_state.page = "home"
+                        st.rerun()
