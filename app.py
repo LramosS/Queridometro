@@ -25,7 +25,10 @@ TIMEZONE = ZoneInfo("America/Sao_Paulo")
 VOTING_START = time(9, 0)
 VOTING_END = time(18, 0)
 
-REMEMBER_COOKIE = "queridometro_email"
+MIN_PARTICIPANTS_FOR_RESULTS = 10
+
+REMEMBER_COOKIE = "queridometro_refresh_token"
+LEGACY_EMAIL_COOKIE = "queridometro_email"
 COOKIE_DAYS = 365
 
 PHOTO_BUCKET = "profile-photos"
@@ -128,6 +131,18 @@ BASE_EMOJIS = [
 
 COUNTED_EMOJIS = BASE_EMOJIS + [FRIDAY_EMOJI]
 
+# Emojis que formam a cartela do BINGO.
+# 😐 Não interage e 🍻 Bora tomar uma? ficam de fora.
+BINGO_EMOJIS = [
+    "❤️",
+    "🌱",
+    "🔥",
+    "🐍",
+    "🧳",
+    "🤝",
+    "🦚",
+]
+
 
 def is_friday():
     return today_br().weekday() == 4
@@ -193,12 +208,16 @@ DEFAULT_SESSION = {
     "auth_otp_sent": False,
     "auth_access_token": None,
     "auth_refresh_token": None,
+    "remember_device": False,
+    "remember_device_choice": False,
     "page": "home",
     "votes": {},
+    "friday_beer_votes": {},
     "current_vote_index": 0,
     "confirm_submission": False,
     "confirm_remove_photo": False,
     "photo_uploader_version": 0,
+    "bingo_seen_key": None,
 }
 
 for key, value in DEFAULT_SESSION.items():
@@ -237,6 +256,13 @@ def get_week_dates(date_value=None):
     sunday = monday + timedelta(days=6)
 
     return monday, sunday
+
+
+def is_friday(date_value=None):
+    if date_value is None:
+        date_value = today_br()
+
+    return date_value.weekday() == 4
 
 
 def voting_status():
@@ -423,6 +449,8 @@ def ensure_authenticated_client():
     """
     Reassocia o cliente Supabase isolado à sessão autenticada
     do usuário atual e atualiza os tokens caso haja renovação.
+    Se o dispositivo estiver marcado para ser lembrado, também
+    atualiza o refresh token persistido no cookie.
     """
     access_token = st.session_state.get("auth_access_token")
     refresh_token = st.session_state.get("auth_refresh_token")
@@ -444,6 +472,9 @@ def ensure_authenticated_client():
             st.session_state.auth_access_token = session.access_token
             st.session_state.auth_refresh_token = session.refresh_token
 
+            if st.session_state.get("remember_device"):
+                save_login_cookie(session.refresh_token)
+
         return auth_client
 
     except Exception:
@@ -453,8 +484,12 @@ def ensure_authenticated_client():
 def get_pending_fire_matches():
     """
     Consulta somente os matches do usuário autenticado que ainda
-    não foram confirmados. O próprio RPC limita a janela a 18h-19h.
+    não foram confirmados. O Tinder do Foguinho funciona apenas
+    às sextas-feiras; o RPC também limita a janela a 18h-19h.
     """
+    if not is_friday():
+        return []
+
     auth_client = ensure_authenticated_client()
 
     if auth_client is None:
@@ -734,49 +769,39 @@ def login_user(email):
     return True
 
 
-def try_cookie_login():
-    if st.session_state.user_email is not None:
-        return
-
-    saved_email = None
+def get_saved_refresh_token():
+    """Lê o refresh token salvo neste navegador, se houver."""
+    saved_token = None
 
     try:
-        saved_email = (
-            st.context.cookies.get(
-                REMEMBER_COOKIE
-            )
-        )
+        saved_token = st.context.cookies.get(REMEMBER_COOKIE)
     except Exception:
         pass
 
-    if not saved_email:
+    if not saved_token:
         try:
-            saved_email = (
-                cookie_manager.get(
-                    cookie=REMEMBER_COOKIE
-                )
+            saved_token = cookie_manager.get(
+                cookie=REMEMBER_COOKIE
             )
         except Exception:
-            saved_email = None
+            saved_token = None
 
-    if saved_email:
-        login_user(
-            str(saved_email)
-        )
+    return str(saved_token) if saved_token else None
 
 
-def save_login_cookie(email):
+def save_login_cookie(refresh_token):
+    """Persiste somente o refresh token do Supabase neste navegador."""
+    if not refresh_token:
+        return False
+
     try:
-        expiration = (
-            datetime.now()
-            + timedelta(days=COOKIE_DAYS)
-        )
+        expiration = datetime.now() + timedelta(days=COOKIE_DAYS)
 
         cookie_manager.set(
             REMEMBER_COOKIE,
-            email,
+            refresh_token,
             expires_at=expiration,
-            key="set_queridometro_email",
+            key="set_queridometro_refresh_token",
         )
 
         return True
@@ -786,14 +811,61 @@ def save_login_cookie(email):
 
 
 def delete_login_cookie():
+    """Remove o cookie atual e também o cookie antigo de e-mail."""
+    for cookie_name, key_name in (
+        (REMEMBER_COOKIE, "delete_queridometro_refresh_token"),
+        (LEGACY_EMAIL_COOKIE, "delete_queridometro_legacy_email"),
+    ):
+        try:
+            cookie_manager.delete(
+                cookie=cookie_name,
+                key=key_name,
+            )
+        except Exception:
+            pass
+
+
+def try_persistent_login():
+    """
+    Tenta restaurar a sessão do Supabase usando o refresh token
+    persistido no navegador. Se funcionar, entra sem novo OTP e
+    grava imediatamente o refresh token rotacionado.
+    """
+    if st.session_state.user_email is not None:
+        return True
+
+    refresh_token = get_saved_refresh_token()
+
+    if not refresh_token:
+        return False
+
+    auth_client = get_auth_client()
+
     try:
-        cookie_manager.delete(
-            cookie=REMEMBER_COOKIE,
-            key="delete_queridometro_email",
-        )
+        response = auth_client.auth.refresh_session(refresh_token)
+        session = getattr(response, "session", None)
+        user = getattr(response, "user", None)
+
+        if not session or not user:
+            delete_login_cookie()
+            return False
+
+        st.session_state.auth_access_token = session.access_token
+        st.session_state.auth_refresh_token = session.refresh_token
+        st.session_state.remember_device = True
+
+        if not login_authenticated_user(user):
+            delete_login_cookie()
+            return False
+
+        # Refresh tokens podem ser rotacionados a cada renovação.
+        # Guardamos imediatamente o token novo.
+        save_login_cookie(session.refresh_token)
+        return True
 
     except Exception:
-        pass
+        delete_login_cookie()
+        return False
 
 
 def logout():
@@ -1388,19 +1460,69 @@ def has_voted_today():
     return len(response.data) > 0
 
 
-def get_today_participation_count():
+def get_participation_count(date_value):
     response = (
         supabase
         .table("daily_participation")
         .select("id")
         .eq(
             "vote_date",
-            today_br().isoformat(),
+            date_value.isoformat(),
         )
         .execute()
     )
 
     return len(response.data)
+
+
+def get_today_participation_count():
+    return get_participation_count(
+        today_br()
+    )
+
+
+def results_are_unlocked(date_value):
+    return (
+        get_participation_count(date_value)
+        >= MIN_PARTICIPANTS_FOR_RESULTS
+    )
+
+
+def get_eligible_result_dates(
+    start_date,
+    end_date,
+):
+    response = (
+        supabase
+        .table("daily_participation")
+        .select("vote_date")
+        .gte(
+            "vote_date",
+            start_date.isoformat(),
+        )
+        .lte(
+            "vote_date",
+            end_date.isoformat(),
+        )
+        .execute()
+    )
+
+    counts = {}
+
+    for row in (response.data or []):
+        vote_date = row.get("vote_date")
+
+        if vote_date:
+            counts[vote_date] = (
+                counts.get(vote_date, 0)
+                + 1
+            )
+
+    return {
+        vote_date
+        for vote_date, count in counts.items()
+        if count >= MIN_PARTICIPANTS_FOR_RESULTS
+    }
 
 
 def get_today_votes_count():
@@ -1445,6 +1567,16 @@ def show_login():
             key="auth_login_email",
         )
 
+        st.checkbox(
+            "Lembrar neste dispositivo",
+            key="remember_device",
+            help=(
+                "Mantém sua sessão neste navegador para que você "
+                "não precise pedir um novo código a cada visita. "
+                "Use apenas em um dispositivo pessoal ou confiável."
+            ),
+        )
+
         if st.button(
             "Receber código",
             type="primary",
@@ -1485,6 +1617,16 @@ def show_login():
 
                 st.session_state.auth_email = email
                 st.session_state.auth_otp_sent = True
+
+                # Guarda a escolha fora do widget.
+                # O checkbox deixa de existir na etapa do OTP e,
+                # sem esta cópia, o Streamlit pode perder o valor.
+                st.session_state.remember_device_choice = bool(
+                    st.session_state.get(
+                        "remember_device",
+                        False,
+                    )
+                )
 
                 st.success(
                     "Código enviado para seu e-mail."
@@ -1569,6 +1711,9 @@ def show_login():
                     response.session.refresh_token
                 )
 
+                # Primeiro conclui o login dentro do app.
+                # O OTP é de uso único; não podemos depender de
+                # uma segunda tentativa para terminar esta etapa.
                 if not login_authenticated_user(
                     response.user
                 ):
@@ -1577,6 +1722,24 @@ def show_login():
                         "mas sem participante vinculado."
                     )
                     return
+
+                # Só depois de o usuário já estar identificado no app
+                # persistimos (ou removemos) a sessão do navegador.
+                remember_choice = bool(
+                    st.session_state.get(
+                        "remember_device_choice",
+                        False,
+                    )
+                )
+
+                st.session_state.remember_device = remember_choice
+
+                if remember_choice:
+                    save_login_cookie(
+                        response.session.refresh_token
+                    )
+                else:
+                    delete_login_cookie()
 
                 st.session_state.auth_otp_sent = False
                 st.session_state.auth_email = None
@@ -1767,8 +1930,9 @@ def show_home():
             )
 
             st.caption(
-                "Os resultados de hoje "
-                "serão liberados depois das 18h."
+                "Os resultados de hoje serão liberados "
+                f"quando {MIN_PARTICIPANTS_FOR_RESULTS} pessoas "
+                "concluírem a votação."
             )
 
         else:
@@ -1806,11 +1970,26 @@ def show_home():
                 "✅ Você participou hoje."
             )
 
-        st.write(
-            "Os resultados de hoje "
-            "já estão disponíveis em "
-            "**📊 Resultados**."
+        participation_count = (
+            get_today_participation_count()
         )
+
+        if (
+            participation_count
+            >= MIN_PARTICIPANTS_FOR_RESULTS
+        ):
+            st.write(
+                "Os resultados de hoje "
+                "já estão disponíveis em "
+                "**📊 Resultados**."
+            )
+        else:
+            st.write(
+                "Os resultados permanecem fechados "
+                "porque hoje ainda não foram registradas "
+                f"{MIN_PARTICIPANTS_FOR_RESULTS} "
+                "participações concluídas."
+            )
 
 
 # ==================================================
@@ -2247,12 +2426,37 @@ def show_voting():
             "🍻 Especial de sexta-feira"
         )
 
+        beer_selected = bool(
+            st.session_state.friday_beer_votes.get(
+                target_email,
+                False,
+            )
+        )
+
+        beer_label = (
+            "✅ 🍻 Bora tomar uma?"
+            if beer_selected
+            else "🍻 Bora tomar uma?"
+        )
+
         if st.button(
-            "🍻 Bora tomar uma?",
+            beer_label,
             key=f"vote_{target_email}_beer",
             use_container_width=True,
         ):
-            select_vote("🍻")
+            st.session_state.friday_beer_votes[
+                target_email
+            ] = not beer_selected
+
+            st.session_state.page = "voting"
+            st.session_state.confirm_submission = False
+
+            st.rerun()
+
+        st.caption(
+            "Opcional: este voto é extra e não substitui "
+            "o emoji principal."
+        )
 
     selected_vote = (
         st.session_state.votes.get(
@@ -2262,11 +2466,22 @@ def show_voting():
 
     if selected_vote:
 
-        st.success(
+        selected_text = (
             f"Selecionado: "
             f"{selected_vote} "
             f"{EMOJI_OPTIONS[selected_vote]['name']}"
         )
+
+        if (
+            is_friday()
+            and st.session_state.friday_beer_votes.get(
+                target_email,
+                False,
+            )
+        ):
+            selected_text += " + 🍻 Bora tomar uma?"
+
+        st.success(selected_text)
 
     else:
 
@@ -2405,6 +2620,20 @@ def show_review():
                     EMOJI_OPTIONS[vote]["name"]
                 )
 
+                beer_extra = (
+                    is_friday()
+                    and st.session_state.friday_beer_votes.get(
+                        email,
+                        False,
+                    )
+                )
+
+                extra_html = (
+                    '<br>🍻 Bora tomar uma?'
+                    if beer_extra
+                    else ''
+                )
+
                 review_html = (
                     '<div '
                     'translate="no" '
@@ -2418,6 +2647,7 @@ def show_review():
                     '</strong>'
                     '<br>'
                     f'{vote} {vote_name}'
+                    f'{extra_html}'
                     '</div>'
                 )
 
@@ -2573,6 +2803,16 @@ def submit_votes():
                     participants[email]["id"]
                 ),
                 "emoji": emoji,
+                "beer": (
+                    bool(
+                        st.session_state.friday_beer_votes.get(
+                            email,
+                            False,
+                        )
+                    )
+                    if is_friday()
+                    else False
+                ),
             }
         )
 
@@ -2705,6 +2945,7 @@ def show_submitted():
     ):
 
         st.session_state.votes = {}
+        st.session_state.friday_beer_votes = {}
         st.session_state.page = "home"
 
         st.rerun()
@@ -2738,6 +2979,11 @@ def get_results(
         .execute()
     )
 
+    eligible_dates = get_eligible_result_dates(
+        start_date,
+        end_date,
+    )
+
     results = {}
 
     for participant in participants.values():
@@ -2754,6 +3000,11 @@ def get_results(
         }
 
     for vote in response.data:
+
+        vote_date = vote.get("vote_date")
+
+        if vote_date not in eligible_dates:
+            continue
 
         recipient_id = vote["recipient_id"]
         emoji = vote["emoji"]
@@ -2861,32 +3112,183 @@ def show_result_card(
     st.divider()
 
 
+def get_bingo_winners(results):
+
+    winners = []
+
+    for participant_id, data in results.items():
+
+        counts = data.get("counts", {})
+
+        completed = all(
+            counts.get(emoji, 0) > 0
+            for emoji in BINGO_EMOJIS
+        )
+
+        if completed:
+            winners.append(
+                {
+                    "id": participant_id,
+                    "name": data.get("name", "Participante"),
+                }
+            )
+
+    return winners
+
+
+def _render_bingo_content(winners, bingo_key):
+
+    st.markdown(
+        "<div style='text-align:center;font-size:54px;line-height:1'>🎉</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        "<div style='text-align:center;font-size:38px;font-weight:900;"
+        "letter-spacing:2px;margin:8px 0 16px 0'>"
+        "BINGOOOOO!"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    if len(winners) == 1:
+
+        safe_name = html.escape(
+            winners[0]["name"]
+        )
+
+        st.markdown(
+            f"<div style='text-align:center;font-size:18px'>"
+            f"<strong>{safe_name}</strong> completou a cartela do Queridômetro "
+            f"e recebeu pelo menos um voto em cada emoji do Bingo!"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+    else:
+
+        safe_names = ", ".join(
+            html.escape(item["name"])
+            for item in winners
+        )
+
+        st.markdown(
+            f"<div style='text-align:center;font-size:18px'>"
+            f"Hoje teve Bingo coletivo! 🎊<br><br>"
+            f"<strong>{safe_names}</strong> completaram a cartela do Queridômetro."
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+    st.caption(
+        "Vale ❤️ 🌱 🔥 🐍 🧳 🤝 🦚. "
+        "😐 Não interage e 🍻 Bora tomar uma? não entram na cartela."
+    )
+
+    if st.button(
+        "AEEEE! 🎉",
+        type="primary",
+        use_container_width=True,
+        key=f"dismiss_bingo_{bingo_key}",
+    ):
+
+        st.session_state.bingo_seen_key = bingo_key
+        st.rerun()
+
+
+if hasattr(st, "dialog"):
+
+    @st.dialog("🎉 Festa no Queridômetro!")
+    def show_bingo_dialog(winners, bingo_key):
+        _render_bingo_content(
+            winners,
+            bingo_key,
+        )
+
+else:
+
+    def show_bingo_dialog(winners, bingo_key):
+        st.success("🎉 BINGOOOOO!")
+        _render_bingo_content(
+            winners,
+            bingo_key,
+        )
+
+
 def show_results():
 
     st.title(
         "📊 Resultados"
     )
 
+    today = today_br()
+
+    # O consolidado semanal só é liberado na sexta,
+    # depois do encerramento da votação.
+    result_options = ["Hoje"]
+
+    if is_friday(today):
+        result_options.append("Semana")
+
     mode = st.radio(
         "Visualização",
-        [
-            "Hoje",
-            "Semana",
-        ],
+        result_options,
         horizontal=True,
     )
 
+    if not is_friday(today):
+        st.caption(
+            "O consolidado semanal é fechado e liberado às sextas-feiras."
+        )
+
     if mode == "Hoje":
 
-        if voting_status() != "closed":
+        date_value = today
+        participation_count = (
+            get_participation_count(
+                date_value
+            )
+        )
+
+        if (
+            participation_count
+            < MIN_PARTICIPANTS_FOR_RESULTS
+        ):
+            remaining = (
+                MIN_PARTICIPANTS_FOR_RESULTS
+                - participation_count
+            )
 
             st.info(
-                "O resultado de hoje "
-                "será liberado depois das 18h."
+                "🔒 Resultados ainda fechados"
+            )
+
+            st.write(
+                "Os resultados serão liberados "
+                "quando pelo menos "
+                f"**{MIN_PARTICIPANTS_FOR_RESULTS} pessoas** "
+                "concluírem a votação de hoje."
+            )
+
+            st.progress(
+                min(
+                    participation_count
+                    / MIN_PARTICIPANTS_FOR_RESULTS,
+                    1.0,
+                )
+            )
+
+            st.caption(
+                f"{participation_count} de "
+                f"{MIN_PARTICIPANTS_FOR_RESULTS} "
+                "participações registradas. "
+                f"Faltam {remaining}."
             )
             return
 
-        date_value = today_br()
+        st.success(
+            "📊 Resultados liberados!"
+        )
 
         st.caption(
             date_value.strftime(
@@ -2901,39 +3303,85 @@ def show_results():
 
     else:
 
-        today = today_br()
+        if voting_status() != "closed":
+            st.info(
+                "O fechamento semanal será liberado hoje depois das 18h."
+            )
+            return
 
-        monday, sunday = (
+        monday, _ = (
             get_week_dates(today)
         )
 
-        if voting_status() == "closed":
-            end_date = today
-
-        else:
-            end_date = (
-                today
-                - timedelta(days=1)
-            )
+        # A semana do Queridômetro fecha na sexta.
+        friday = monday + timedelta(days=4)
 
         st.caption(
             f"{monday.strftime('%d/%m')} "
             f"a "
-            f"{sunday.strftime('%d/%m/%Y')}"
+            f"{friday.strftime('%d/%m/%Y')}"
         )
 
-        if end_date < monday:
+        eligible_dates = get_eligible_result_dates(
+            monday,
+            friday,
+        )
 
+        if not eligible_dates:
             st.info(
-                "Ainda não há resultados "
-                "encerrados nesta semana."
+                "🔒 Nenhum dia desta semana atingiu "
+                f"o mínimo de {MIN_PARTICIPANTS_FOR_RESULTS} "
+                "participações."
             )
             return
 
+        st.caption(
+            "O consolidado considera apenas os dias "
+            f"com pelo menos {MIN_PARTICIPANTS_FOR_RESULTS} "
+            "participações concluídas."
+        )
+
         results = get_results(
             monday,
-            end_date,
+            friday,
         )
+
+    # ==================================================
+    # BINGO DO DIA 🎉
+    # ==================================================
+    # A celebração vale apenas para o resultado diário.
+    # Semana e histórico continuam sem popup.
+    if mode == "Hoje":
+
+        bingo_winners = get_bingo_winners(
+            results
+        )
+
+        if bingo_winners:
+
+            winner_ids = sorted(
+                item["id"]
+                for item in bingo_winners
+            )
+
+            bingo_key = (
+                f"{date_value.isoformat()}|"
+                + "|".join(winner_ids)
+            )
+
+            if (
+                st.session_state.get(
+                    "bingo_seen_key"
+                )
+                != bingo_key
+            ):
+
+                st.balloons()
+
+                show_bingo_dialog(
+                    bingo_winners,
+                    bingo_key,
+                )
 
     for data in results.values():
 
@@ -2955,6 +3403,8 @@ def show_history():
     )
 
     today = today_br()
+    current_monday, _ = get_week_dates(today)
+    current_friday = current_monday + timedelta(days=4)
 
     weeks = []
 
@@ -2967,23 +3417,46 @@ def show_history():
             )
         )
 
-        monday, sunday = (
+        monday, _ = (
             get_week_dates(reference)
         )
+
+        friday = monday + timedelta(days=4)
+
+        # A semana atual só entra no Histórico depois do
+        # fechamento de sexta-feira às 18h.
+        if (
+            monday == current_monday
+            and (
+                today < current_friday
+                or voting_status() != "closed"
+            )
+        ):
+            continue
 
         label = (
             f"{monday.strftime('%d/%m/%Y')} "
             f"a "
-            f"{sunday.strftime('%d/%m/%Y')}"
+            f"{friday.strftime('%d/%m/%Y')}"
         )
 
         weeks.append(
             (
                 label,
                 monday,
-                sunday,
+                friday,
             )
         )
+
+    if not weeks:
+        st.info(
+            "O histórico semanal é fechado às sextas-feiras, depois das 18h."
+        )
+        return
+
+    st.caption(
+        "Cada semana do histórico considera segunda a sexta-feira."
+    )
 
     labels = [
         week[0]
@@ -3004,33 +3477,29 @@ def show_history():
     )
 
     monday = selected_week[1]
-    sunday = selected_week[2]
+    friday = selected_week[2]
 
-    if monday <= today <= sunday:
+    eligible_dates = get_eligible_result_dates(
+        monday,
+        friday,
+    )
 
-        if voting_status() == "closed":
-            end_date = today
-
-        else:
-            end_date = (
-                today
-                - timedelta(days=1)
-            )
-
-    else:
-        end_date = sunday
-
-    if end_date < monday:
-
+    if not eligible_dates:
         st.info(
-            "Ainda não há resultados "
-            "encerrados nesta semana."
+            "Esta semana não possui dias com o mínimo de "
+            f"{MIN_PARTICIPANTS_FOR_RESULTS} participações "
+            "concluídas."
         )
         return
 
+    st.caption(
+        "O histórico considera apenas dias que atingiram "
+        f"o mínimo de {MIN_PARTICIPANTS_FOR_RESULTS} participações."
+    )
+
     results = get_results(
         monday,
-        end_date,
+        friday,
     )
 
     for data in results.values():
@@ -3860,9 +4329,10 @@ def show_maintenance():
 # LOGIN AUTOMÁTICO
 # ==================================================
 
-# Login automático antigo por cookie desativado durante
-# a migração para Supabase Auth.
-# A identidade agora precisa ser confirmada por OTP.
+# Se houver um refresh token válido salvo neste navegador,
+# restaura a sessão do Supabase sem pedir um novo OTP.
+if st.session_state.user_email is None:
+    try_persistent_login()
 
 
 # ==================================================
